@@ -12,8 +12,9 @@
 
 - 單一貨幣 HKD（DB 保留 currency 欄位，預設 HKD）
 - 每個 user 註冊時自動建立一個「現金」Account
-- Weekly = Monday 00:00:00 至 Sunday 23:59:59（user timezone）
-- Monthly = 1 號 00:00:00 至月末 23:59:59（user timezone）
+- 時區固定 `Asia/Hong_Kong`（Rails `config.time_zone`、user 預設、OS `TZ` 一律呢個）
+- Weekly = Monday 00:00:00 至 Sunday 23:59:59（Asia/Hong_Kong）
+- Monthly = 1 號 00:00:00 至月末 23:59:59（Asia/Hong_Kong）
 - Recurring 用 **request-time catch-up**，唔用 background job / worker
 - Recurring backfill **預設關閉**；可選開啟，上限 90 日
 - 刪除一律 **hard delete**（唔用 soft delete / `discarded_at`）
@@ -356,12 +357,12 @@ POST /api/v1/transactions/123/refund
 ## 4. 業務規則
 
 1. **金額**：integer cents，永遠正數；方向由 `kind` 決定
-2. **時區**：DB 存 UTC；計算 summary 時用 `user.timezone`
+2. **時區**：全 app `Asia/Hong_Kong`。DB 仍然存 UTC（`ActiveRecord::Base.default_timezone = :utc`）；顯示同計算（summary、recurring catch-up、日/週/月邊界）一律用 `Time.zone`（Hong Kong）
 3. **Weekly**：Mon 00:00:00 至 Sun 23:59:59.999999
 4. **Monthly**：1 號 00:00:00 至月末 23:59:59.999999
 5. **Transfer**：唔計入 income/expense summary；獨立 `transfers` key
 6. **Recurring 產生邏輯**（request-time catch-up，**唔用 background job**）：
-   - 已 authenticate 嘅 request 開頭呼叫 `RecurringCatchUp.call(user: current_user)`（`Time.use_zone(user.timezone)`）
+   - 已 authenticate 嘅 request 開頭呼叫 `RecurringCatchUp.call(user: current_user)`（`Time.use_zone("Asia/Hong_Kong")`）
    - 跳過：Auth、Health
    - 只處理該 user `status = active` 且 `next_run_at <= now` 嘅 rule
    - 用 `RecurringOccurrence` unique index 保證 idempotent；併發 request 撞 unique → rescue 當已處理
@@ -430,7 +431,7 @@ POST /api/v1/transactions/123/refund
 - [ ] 加 gem：`bcrypt`, `jwt`, `rack-cors`, `rack-attack`, `pagy`, `rswag`, `dotenv-rails`(dev), `bullet`(dev/test), `rspec-rails`, `factory_bot_rails`, `webmock`, `vcr`, `faraday`, `faraday-retry`, `stoplight`, `lograge`
 - [ ] **唔裝**：`discard`、Solid Queue、Solid Cable
 - [ ] `config/application.rb`：
-  - `config.time_zone = "UTC"`
+  - `config.time_zone = "Asia/Hong_Kong"`
   - `config.active_record.default_timezone = :utc`
   - `config.middleware.insert_after ActionDispatch::RequestId, ActionDispatch::RequestId`
 - [ ] `config/initializers/cors.rb`：origin 由 `ENV["CORS_ORIGINS"].split(",")` 讀
@@ -645,7 +646,7 @@ Content-Type: application/json
   - 月末邊界處理（31 號 → 當月最後一日）
 - [ ] `RecurringCatchUp` service（**唔用 job**）：
   - `call(user:)` 掃該 user `status = active` 且 `next_run_at <= now`
-  - 包 `Time.use_zone(user.timezone)`
+  - 包 `Time.use_zone("Asia/Hong_Kong")`
   - 用 `RecurringOccurrence` unique index 保證 idempotent；撞 unique → rescue 當已處理
   - 建立 Transaction，`source = recurring`
   - 更新 `last_run_at` / `next_run_at`
@@ -757,13 +758,13 @@ upload → LIHKG URL → Attachment (sha256)
   - 帳戶餘額（initial + sum(income) - sum(expense) + sum(refund)）
   - 週期交易提醒（7 日內 next_run_at）
 - [ ] `SummariesController`：
-  - `daily`：`user.timezone` 當日 00:00:00 - 23:59:59
+  - `daily`：Asia/Hong_Kong 當日 00:00:00 - 23:59:59
   - `weekly`：Mon 00:00:00 - Sun 23:59:59
   - `monthly`：1 號 00:00:00 - 月末 23:59:59
   - 排除 transfer（獨立 `transfers` key）
   - 回 by_category（含 refund_cents）、by_account、transfers、transactions 分頁
   - catch-up 已喺 before_action 跑完，summary 只計真實 Transaction
-- [ ] 用 `Time.use_zone(user.timezone)` 包住
+- [ ] 用 `Time.use_zone("Asia/Hong_Kong")` 包住
 - [ ] 加 index 支援 range query
 
 **計算邏輯**：

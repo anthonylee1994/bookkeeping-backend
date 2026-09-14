@@ -1,4 +1,6 @@
 Rails.application.routes.draw do
+  mount Rswag::Ui::Engine => "/api-docs" if defined?(Rswag::Ui::Engine)
+  mount Rswag::Api::Engine => "/api-docs" if defined?(Rswag::Api::Engine)
   get "up" => "rails/health#show", as: :rails_health_check
 
   namespace :api do

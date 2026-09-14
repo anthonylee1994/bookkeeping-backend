@@ -1,0 +1,40 @@
+openapi: 3.0.1
+info:
+  title: Bookkeeping API
+  version: v1
+  description: Personal bookkeeping API
+servers:
+  - url: /
+paths:
+  /up:
+    get:
+      summary: Health check
+      responses:
+        '200':
+          description: Healthy
+  /api/v1/dashboard:
+    get:
+      summary: Dashboard summary
+      responses:
+        '200':
+          description: Dashboard data
+        '401':
+          description: Unauthorized
+  /api/v1/summaries/{period}:
+    get:
+      summary: Period summary
+      parameters:
+        - name: period
+          in: path
+          required: true
+          schema:
+            type: string
+            enum: [daily, weekly, monthly]
+        - name: date
+          in: query
+          schema:
+            type: string
+            format: date
+      responses:
+        '200':
+          description: Summary data

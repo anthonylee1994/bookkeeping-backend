@@ -1,5 +1,11 @@
 # This file was generated for Phase 0. Keep it light; Rails-specific setup
 # lives in rails_helper.rb.
+require "simplecov"
+SimpleCov.start "rails" do
+  enable_coverage :branch
+  minimum_coverage 80
+  skip "/spec/"
+end
 RSpec.configure do |config|
   config.expect_with :rspec do |expectations|
     expectations.include_chain_clauses_in_custom_matcher_descriptions = true

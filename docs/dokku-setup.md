@@ -64,5 +64,12 @@ curl -fsS https://book-api.on99.app/up
 
 ## Host cron (Phase 7)
 
-Backup + idempotency cleanup are host cron, not an in-app worker. See Phase 7
-in `BACKEND-SPEC.md` when implementing maintenance.
+Backup + idempotency cleanup are host cron, not an in-app worker:
+
+```cron
+0 3 * * * dokku run bookkeeping-backend bin/rails maintenance:cleanup
+0 4 * * * /path/to/bookkeeping-backend/scripts/backup.sh
+```
+
+The backup script keeps timestamped `production` and `production_cache` SQLite
+snapshots under `/app/storage/backups` and removes snapshots older than 7 days.

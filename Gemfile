@@ -39,6 +39,7 @@ group :development, :test do
   gem "factory_bot_rails"
   gem "webmock"
   gem "vcr"
+  gem "simplecov", require: false
 end
 
 gem "faraday-multipart", "~> 1.2"

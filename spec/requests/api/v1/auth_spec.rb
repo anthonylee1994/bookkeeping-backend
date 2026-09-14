@@ -38,6 +38,7 @@ RSpec.describe "Auth", type: :request do
 
       expect(response).to have_http_status(:unprocessable_content)
       expect(json.dig("error", "code")).to eq("validation_error")
+      expect(json.dig("error", "message")).to eq("使用者名稱已被使用")
     end
 
     it "rejects a password shorter than 8 characters" do
@@ -47,6 +48,7 @@ RSpec.describe "Auth", type: :request do
 
       expect(response).to have_http_status(:unprocessable_content)
       expect(json.dig("error", "code")).to eq("validation_error")
+      expect(json.dig("error", "message")).to eq("密碼至少需要 8 個字元")
     end
   end
 
@@ -72,6 +74,7 @@ RSpec.describe "Auth", type: :request do
       expect(response).to have_http_status(:unauthorized)
       expect(json.dig("error", "code")).to eq("invalid_credentials")
       expect(json.dig("error", "request_id")).to be_present
+      expect(json.dig("error", "message")).to eq("使用者名稱或密碼不正確")
     end
 
     it "returns invalid_credentials for an unknown username" do
@@ -81,6 +84,7 @@ RSpec.describe "Auth", type: :request do
 
       expect(response).to have_http_status(:unauthorized)
       expect(json.dig("error", "code")).to eq("invalid_credentials")
+      expect(json.dig("error", "message")).to eq("使用者名稱或密碼不正確")
     end
   end
 

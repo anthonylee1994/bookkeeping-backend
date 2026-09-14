@@ -20,7 +20,7 @@
 - 刪除一律 **hard delete**（唔用 soft delete / `discarded_at`）
 - JWT **所有 env 都唔 check exp**；token 唔寫 `exp`；**冇 UserSession**；logout 只係 frontend 刪 JWT
 - Auth **只用 username + password**，唔用 email
-- LIHKG 上傳 API 係**非官方**圖床（eservice-hk），唔保證穩定
+- LIHKG 上傳 API 係**非官方**圖床（eservice-hk），唔保證穩定；出站 upload **必須**帶 `Origin: https://lihkg.com`（圖床會 check，缺或唔係呢個值會拒）
 - DeepSeek `deepseek-flash` **原生支援 vision**，無需 OCR fallback
 - Dokku 用 Dockerfile buildpack（Rails 8 預設）
 - Dokku 上 SQLite 檔案用 persistent storage mount
@@ -429,7 +429,7 @@ POST /api/v1/transactions/550e8400-e29b-41d4-a716-446655440000/refund
       - `net_cents = income_cents - net_expense`
     - `by_category` 各自顯示 `expense_cents` 同 `refund_cents`
 17. **SSRF 防護**：`/ai/parse` 只收 whitelist host 嘅 `image_url`（`ENV["LIHKG_ALLOWED_HOSTS"]`，預設 `img.eservice-hk.net`）；backend 自己 fetch。非 whitelist → 400
-18. **LIHKG 圖床風險**：用 stoplight circuit breaker，連續失敗 5 次開路 60 秒；失敗時回 502，log 詳細
+18. **LIHKG 圖床風險**：用 stoplight circuit breaker，連續失敗 5 次開路 60 秒；失敗時回 502，log 詳細。出站 upload Faraday request **必須**帶 `Origin: https://lihkg.com`（硬編碼，圖床會 check Origin）
 19. **Pagy 上限**：`Pagy::DEFAULT[:max_per_page] = 100`
 
 ---
@@ -702,6 +702,7 @@ Content-Type: application/json
 - [ ] `LihkgUploadService`：
   - endpoint 由 `ENV["LIHKG_UPLOAD_URL"]` 讀
   - multipart form，field name `file`
+  - 出站 header **必須** `Origin: https://lihkg.com`（硬編碼；圖床會 check，唔係呢個 Origin 會拒。**唔好**用我哋自己 API 嘅 CORS origin）
   - 驗證 magic number（`marcel` gem）
   - 大小上限 `MAX_UPLOAD_BYTES`（預設 10MB）
   - timeout 10s
@@ -761,6 +762,7 @@ upload → LIHKG URL（只回 client，唔寫 Attachment）
 **驗收**
 
 - [ ] 上傳 jpg 回 `{ url, sha256 }`，DB **冇** Attachment 表 / row
+- [ ] 打 LIHKG upload 嘅 HTTP request 帶 `Origin: https://lihkg.com`（WebMock 驗 header）
 - [ ] 上傳 .exe 回 422
 - [ ] 同一張圖 24 小時內 parse 兩次，第二次直接回 cache，唔再打 DeepSeek
 - [ ] DeepSeek 回唔合法 JSON → status = partial，回 raw + error
@@ -956,7 +958,7 @@ Pagy 預設回 `page, items, count, pages`，要自己 map 做上面格式。
 ## 10. 未確定事項 / 風險
 
 1. **DeepSeek vision 已 GA**：`deepseek-flash` 原生支援 image input，三種傳入方式（base64 / URL / file_id）。單張圖最多 384 tokens，定價同文字模型相同。舊名 `deepseek-v4-flash-vision-exp` 仍兼容但已路由到 `deepseek-flash`。
-2. **LIHKG API 非官方**：`img.eservice-hk.net` 唔係 LIHKG 官方 API，冇 SLA、冇文檔、可能隨時改。已加 stoplight circuit breaker，但要有 fallback 圖床（S3 / R2）嘅 plan。
+2. **LIHKG API 非官方**：`img.eservice-hk.net` 唔係 LIHKG 官方 API，冇 SLA、冇文檔、可能隨時改。出站 upload **必須** `Origin: https://lihkg.com`，否則圖床會拒。已加 stoplight circuit breaker，但要有 fallback 圖床（S3 / R2）嘅 plan。
 3. **SQLite 併發**：而家得 web process 寫，風險細過 web+worker；WAL + busy_timeout 仍然要。Catch-up 喺 read request 寫入，單 user 可接受；高負載要轉 Postgres。
 4. **JWT 永久有效**：唔寫、唔驗證 `exp`；冇 UserSession，server **唔能** revoke 單張 token。Logout = frontend 刪本地 JWT。遺失 token 要 rotate `JWT_SECRET` 先全部作廢。
 5. **Dokku storage 單點**：冇 replication，靠 backup。

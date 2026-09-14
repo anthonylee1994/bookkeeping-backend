@@ -6,6 +6,10 @@ Rails.application.routes.draw do
       post "auth/register", to: "auth#register"
       post "auth/login", to: "auth#login"
       get "me", to: "me#show"
+      get "dashboard", to: "dashboard#show"
+      get "summaries/daily", to: "summaries#daily"
+      get "summaries/weekly", to: "summaries#weekly"
+      get "summaries/monthly", to: "summaries#monthly"
       resources :accounts, only: %i[index create update destroy]
       resources :categories, only: %i[index create update destroy]
       resources :merchants, only: %i[index create destroy]

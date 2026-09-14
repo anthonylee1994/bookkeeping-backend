@@ -10,7 +10,7 @@
 #
 # It's strongly recommended that you check this file into your version control system.
 
-ActiveRecord::Schema[8.1].define(version: 2026_09_14_160000) do
+ActiveRecord::Schema[8.1].define(version: 2026_09_14_170000) do
   create_table "accounts", id: { type: :string, limit: 36 }, force: :cascade do |t|
     t.string "color"
     t.datetime "created_at", null: false
@@ -149,6 +149,7 @@ ActiveRecord::Schema[8.1].define(version: 2026_09_14_160000) do
     t.index ["refund_of_id"], name: "index_transactions_on_refund_of_id"
     t.index ["transfer_account_id"], name: "index_transactions_on_transfer_account_id"
     t.index ["user_id", "kind", "occurred_at"], name: "index_transactions_on_user_id_and_kind_and_occurred_at"
+    t.index ["user_id", "occurred_at", "kind"], name: "index_transactions_on_user_id_and_occurred_at_and_kind"
     t.index ["user_id", "occurred_at"], name: "index_transactions_on_user_id_and_occurred_at"
     t.index ["user_id"], name: "index_transactions_on_user_id"
   end

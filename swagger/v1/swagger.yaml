@@ -2,39 +2,340 @@ openapi: 3.0.1
 info:
   title: Bookkeeping API
   version: v1
-  description: Personal bookkeeping API
+  description: Personal bookkeeping API.
 servers:
   - url: /
+tags:
+  - name: Auth
+  - name: Dashboard
+  - name: Accounts
+  - name: Categories
+  - name: Merchants
+  - name: Transactions
+  - name: Recurring rules
+  - name: Receipts and AI
 paths:
   /up:
     get:
       summary: Health check
-      responses:
-        '200':
-          description: Healthy
+      responses: { '200': { description: Healthy } }
+  /api/v1/auth/register:
+    post:
+      tags: [Auth]
+      summary: Register a user
+      requestBody: { $ref: '#/components/requestBodies/Auth' }
+      responses: { '201': { description: Registered }, '422': { $ref: '#/components/responses/ValidationError' } }
+  /api/v1/auth/login:
+    post:
+      tags: [Auth]
+      summary: Login
+      requestBody: { $ref: '#/components/requestBodies/Auth' }
+      responses: { '200': { description: Authenticated }, '401': { $ref: '#/components/responses/Unauthorized' } }
+  /api/v1/me:
+    get:
+      tags: [Auth]
+      security: [{ bearerAuth: [] }]
+      summary: Current user
+      responses: { '200': { description: User profile } }
   /api/v1/dashboard:
     get:
-      summary: Dashboard summary
-      responses:
-        '200':
-          description: Dashboard data
-        '401':
-          description: Unauthorized
+      tags: [Dashboard]
+      security: [{ bearerAuth: [] }]
+      summary: Monthly dashboard
+      parameters: [{ $ref: '#/components/parameters/Date' }]
+      responses: { '200': { description: Dashboard data } }
   /api/v1/summaries/{period}:
     get:
-      summary: Period summary
+      tags: [Dashboard]
+      security: [{ bearerAuth: [] }]
+      summary: Daily, weekly or monthly summary
       parameters:
         - name: period
           in: path
           required: true
-          schema:
-            type: string
-            enum: [daily, weekly, monthly]
-        - name: date
-          in: query
-          schema:
-            type: string
-            format: date
-      responses:
-        '200':
-          description: Summary data
+          schema: { type: string, enum: [daily, weekly, monthly] }
+        - { $ref: '#/components/parameters/Date' }
+        - { $ref: '#/components/parameters/Page' }
+        - { $ref: '#/components/parameters/PerPage' }
+      responses: { '200': { description: Summary data } }
+  /api/v1/accounts:
+    get:
+      tags: [Accounts]
+      security: [{ bearerAuth: [] }]
+      summary: List accounts
+      responses: { '200': { description: Accounts } }
+    post:
+      tags: [Accounts]
+      security: [{ bearerAuth: [] }]
+      summary: Create account
+      requestBody: { $ref: '#/components/requestBodies/Account' }
+      responses: { '201': { description: Created } }
+  /api/v1/accounts/{id}:
+    parameters: [{ $ref: '#/components/parameters/Id' }]
+    patch:
+      tags: [Accounts]
+      security: [{ bearerAuth: [] }]
+      summary: Update account
+      requestBody: { $ref: '#/components/requestBodies/Account' }
+      responses: { '200': { description: Updated } }
+    delete:
+      tags: [Accounts]
+      security: [{ bearerAuth: [] }]
+      summary: Delete account
+      responses: { '204': { description: Deleted } }
+  /api/v1/categories:
+    get:
+      tags: [Categories]
+      security: [{ bearerAuth: [] }]
+      summary: List categories
+      responses: { '200': { description: Categories } }
+    post:
+      tags: [Categories]
+      security: [{ bearerAuth: [] }]
+      summary: Create category
+      requestBody: { $ref: '#/components/requestBodies/Category' }
+      responses: { '201': { description: Created } }
+  /api/v1/categories/{id}:
+    parameters: [{ $ref: '#/components/parameters/Id' }]
+    patch:
+      tags: [Categories]
+      security: [{ bearerAuth: [] }]
+      summary: Update category
+      requestBody: { $ref: '#/components/requestBodies/Category' }
+      responses: { '200': { description: Updated } }
+    delete:
+      tags: [Categories]
+      security: [{ bearerAuth: [] }]
+      summary: Delete category
+      responses: { '204': { description: Deleted } }
+  /api/v1/merchants:
+    get:
+      tags: [Merchants]
+      security: [{ bearerAuth: [] }]
+      summary: Search merchants
+      parameters: [{ $ref: '#/components/parameters/Search' }]
+      responses: { '200': { description: Merchants } }
+    post:
+      tags: [Merchants]
+      security: [{ bearerAuth: [] }]
+      summary: Create merchant
+      requestBody: { $ref: '#/components/requestBodies/Merchant' }
+      responses: { '201': { description: Created } }
+  /api/v1/merchants/{id}:
+    delete:
+      tags: [Merchants]
+      security: [{ bearerAuth: [] }]
+      summary: Delete merchant
+      parameters: [{ $ref: '#/components/parameters/Id' }]
+      responses: { '204': { description: Deleted } }
+  /api/v1/transactions:
+    get:
+      tags: [Transactions]
+      security: [{ bearerAuth: [] }]
+      summary: List transactions
+      parameters:
+        - { $ref: '#/components/parameters/Page' }
+        - { $ref: '#/components/parameters/PerPage' }
+        - { $ref: '#/components/parameters/DateFrom' }
+        - { $ref: '#/components/parameters/DateTo' }
+      responses: { '200': { description: Paginated transactions } }
+    post:
+      tags: [Transactions]
+      security: [{ bearerAuth: [] }]
+      summary: Create transaction
+      parameters: [{ $ref: '#/components/parameters/IdempotencyKey' }]
+      requestBody: { $ref: '#/components/requestBodies/Transaction' }
+      responses: { '201': { description: Created } }
+  /api/v1/transactions/{id}:
+    parameters: [{ $ref: '#/components/parameters/Id' }]
+    get:
+      tags: [Transactions]
+      security: [{ bearerAuth: [] }]
+      summary: Get transaction
+      responses: { '200': { description: Transaction } }
+    patch:
+      tags: [Transactions]
+      security: [{ bearerAuth: [] }]
+      summary: Update transaction
+      requestBody: { $ref: '#/components/requestBodies/Transaction' }
+      responses: { '200': { description: Updated } }
+    delete:
+      tags: [Transactions]
+      security: [{ bearerAuth: [] }]
+      summary: Delete transaction
+      responses: { '204': { description: Deleted } }
+  /api/v1/transactions/{id}/refund:
+    post:
+      tags: [Transactions]
+      security: [{ bearerAuth: [] }]
+      summary: Refund a transaction
+      parameters: [{ $ref: '#/components/parameters/Id' }]
+      requestBody: { $ref: '#/components/requestBodies/Refund' }
+      responses: { '200': { description: Refund transaction } }
+  /api/v1/transactions/{id}/duplicate:
+    post:
+      tags: [Transactions]
+      security: [{ bearerAuth: [] }]
+      summary: Duplicate a transaction
+      parameters: [{ $ref: '#/components/parameters/Id' }]
+      responses: { '201': { description: Duplicated transaction } }
+  /api/v1/recurring_rules:
+    get:
+      tags: [Recurring rules]
+      security: [{ bearerAuth: [] }]
+      summary: List recurring rules
+      responses: { '200': { description: Recurring rules } }
+    post:
+      tags: [Recurring rules]
+      security: [{ bearerAuth: [] }]
+      summary: Create recurring rule
+      requestBody: { $ref: '#/components/requestBodies/RecurringRule' }
+      responses: { '201': { description: Created } }
+  /api/v1/recurring_rules/{id}:
+    parameters: [{ $ref: '#/components/parameters/Id' }]
+    patch:
+      tags: [Recurring rules]
+      security: [{ bearerAuth: [] }]
+      summary: Update recurring rule
+      requestBody: { $ref: '#/components/requestBodies/RecurringRule' }
+      responses: { '200': { description: Updated } }
+    delete:
+      tags: [Recurring rules]
+      security: [{ bearerAuth: [] }]
+      summary: Delete recurring rule
+      responses: { '204': { description: Deleted } }
+  /api/v1/recurring_rules/{id}/{action}:
+    post:
+      tags: [Recurring rules]
+      security: [{ bearerAuth: [] }]
+      summary: Pause, resume, run now or skip next
+      parameters:
+        - { $ref: '#/components/parameters/Id' }
+        - name: action
+          in: path
+          required: true
+          schema: { type: string, enum: [pause, resume, run_now, skip_next] }
+      responses: { '200': { description: Action result } }
+  /api/v1/receipts/upload:
+    post:
+      tags: [Receipts and AI]
+      security: [{ bearerAuth: [] }]
+      summary: Upload a receipt image
+      requestBody:
+        required: true
+        content:
+          multipart/form-data:
+            schema:
+              type: object
+              required: [file]
+              properties:
+                file: { type: string, format: binary }
+      responses: { '201': { description: Uploaded image URL and SHA256 } }
+  /api/v1/ai/parse:
+    post:
+      tags: [Receipts and AI]
+      security: [{ bearerAuth: [] }]
+      summary: Parse a receipt image with AI
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [image_url]
+              properties: { image_url: { type: string, format: uri } }
+      responses: { '200': { description: AI preview } }
+  /api/v1/ai/confirm:
+    post:
+      tags: [Receipts and AI]
+      security: [{ bearerAuth: [] }]
+      summary: Confirm AI preview as a transaction
+      parameters: [{ $ref: '#/components/parameters/IdempotencyKey' }]
+      requestBody: { $ref: '#/components/requestBodies/Transaction' }
+      responses: { '201': { description: AI transaction } }
+components:
+  securitySchemes:
+    bearerAuth: { type: http, scheme: bearer, bearerFormat: JWT }
+  parameters:
+    Id: { name: id, in: path, required: true, schema: { type: string, format: uuid } }
+    Date: { name: date, in: query, schema: { type: string, format: date } }
+    DateFrom: { name: from, in: query, schema: { type: string, format: date } }
+    DateTo: { name: to, in: query, schema: { type: string, format: date } }
+    Page: { name: page, in: query, schema: { type: integer, minimum: 1, default: 1 } }
+    PerPage: { name: per_page, in: query, schema: { type: integer, minimum: 1, maximum: 100, default: 25 } }
+    Search: { name: q, in: query, schema: { type: string } }
+    IdempotencyKey: { name: Idempotency-Key, in: header, schema: { type: string } }
+  requestBodies:
+    Auth: { required: true, content: { application/json: { schema: { $ref: '#/components/schemas/AuthInput' } } } }
+    Account: { required: true, content: { application/json: { schema: { $ref: '#/components/schemas/AccountInput' } } } }
+    Category: { required: true, content: { application/json: { schema: { $ref: '#/components/schemas/CategoryInput' } } } }
+    Merchant: { required: true, content: { application/json: { schema: { $ref: '#/components/schemas/MerchantInput' } } } }
+    Transaction: { required: true, content: { application/json: { schema: { $ref: '#/components/schemas/TransactionInput' } } } }
+    Refund: { content: { application/json: { schema: { type: object, properties: { amount_cents: { type: integer, minimum: 1 }, occurred_at: { type: string, format: date-time }, note: { type: string } } } } } }
+    RecurringRule: { required: true, content: { application/json: { schema: { $ref: '#/components/schemas/RecurringRuleInput' } } } }
+  responses:
+    Unauthorized: { description: Unauthorized }
+    ValidationError: { description: Validation error }
+  schemas:
+    AuthInput:
+      type: object
+      required: [username, password]
+      properties:
+        username: { type: string }
+        password: { type: string, format: password, minLength: 8 }
+    AccountInput:
+      type: object
+      required: [name, kind, currency]
+      properties:
+        name: { type: string }
+        kind: { type: string, enum: [cash, bank, credit_card, e_wallet, other] }
+        currency: { type: string, example: HKD }
+        initial_balance_cents: { type: integer }
+        icon: { type: string }
+        color: { type: string }
+    CategoryInput:
+      type: object
+      required: [name, kind]
+      properties:
+        name: { type: string }
+        kind: { type: string, enum: [income, expense] }
+        position: { type: integer }
+        icon: { type: string }
+        color: { type: string }
+    MerchantInput:
+      type: object
+      required: [name]
+      properties:
+        name: { type: string }
+        default_category_id: { type: string, format: uuid, nullable: true }
+    TransactionInput:
+      type: object
+      required: [account_id, kind, amount_cents, occurred_at]
+      properties:
+        account_id: { type: string, format: uuid }
+        category_id: { type: string, format: uuid, nullable: true }
+        merchant_id: { type: string, format: uuid, nullable: true }
+        kind: { type: string, enum: [income, expense, transfer] }
+        amount_cents: { type: integer, minimum: 1 }
+        currency: { type: string, example: HKD }
+        occurred_at: { type: string, format: date-time }
+        note: { type: string, nullable: true }
+        payment_method: { type: string, nullable: true }
+        source: { type: string, enum: [manual, recurring, ai, import] }
+        transfer_account_id: { type: string, format: uuid, nullable: true }
+        image_urls: { type: array, items: { type: string, format: uri } }
+    RecurringRuleInput:
+      type: object
+      required: [account_id, kind, amount_cents, frequency, start_on, next_run_at]
+      properties:
+        account_id: { type: string, format: uuid }
+        category_id: { type: string, format: uuid, nullable: true }
+        merchant_id: { type: string, format: uuid, nullable: true }
+        kind: { type: string, enum: [income, expense] }
+        amount_cents: { type: integer, minimum: 1 }
+        currency: { type: string, example: HKD }
+        frequency: { type: string, enum: [daily, weekly, monthly, yearly] }
+        interval: { type: integer, minimum: 1, default: 1 }
+        start_on: { type: string, format: date }
+        end_on: { type: string, format: date, nullable: true }
+        next_run_at: { type: string, format: date-time }

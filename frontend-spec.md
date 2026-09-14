@@ -518,7 +518,7 @@ type DraftState = {
 | Summaries         | `GET /summaries/daily                                               | weekly | monthly` |
 | Recurring         | `GET/POST /recurring_rules`、update/delete/actions                  |
 
-唯一已實作 health endpoint 為 backend root 嘅 `GET /up`，唔屬於 `/api/v1`。Frontend 一般毋須 polling health endpoint。
+Health endpoints 位於 backend root，唔屬於 `/api/v1`：`GET /up`（liveness）、`GET /health`（整體）、`GET /health/db`、`GET /health/deepseek`、`GET /health/lihkg`。Frontend 一般毋須 polling health endpoint。
 
 ---
 
@@ -702,7 +702,7 @@ VITE_APP_ENV=development
 4. API 不提供 transaction duplicate warning，UI 不應聲稱有自動重複偵測。
 5. `POST /ai/confirm` 實際需要 `ai_import_log_id`（亦兼容 `import_log_id`），現有 OpenAPI request schema未完整表達。
 6. `POST /transactions/:id/refund` 成功 status 為 200，response 除 `data` 外另有頂層 `net_amount_cents`。
-7. Backend routes 實際只有 `/up` health check；`/health`、`/health/db`、`/health/deepseek`、`/health/lihkg` 尚未實作。
+7. Health endpoints 位於 backend root 而非 `/api/v1`；整體及 dependency health check 失敗時會回 `503`，frontend 不應將 `503` 當成成功 response。
 8. 圖片由外部圖床提供，可能失效；UI 必須有 broken image fallback。
 9. 每個 authenticated request 都可能觸發 recurring catch-up 寫入交易；mutation 後應 refetch 有關列表同 dashboard。
 10. Hard delete 不可復原，frontend 不應提供虛假 undo。

@@ -35,7 +35,7 @@ class DeepSeekService
     JSON::Validator.validate!(SCHEMA, parsed)
     { parsed: parsed, raw_response: body, tokens_in: raw.dig("usage", "prompt_tokens"), tokens_out: raw.dig("usage", "completion_tokens"), latency_ms: elapsed_ms(started), status: :success }
   rescue JSON::ParserError, JSON::Schema::ValidationError, JSON::Schema::JsonParseError => e
-    { parsed: (defined?(parsed) ? parsed : nil), raw_response: (body || (response&.body && utf8(response.body)) rescue nil), error_message: e.message, latency_ms: elapsed_ms(started), status: :partial }
+    { parsed: (defined?(parsed) ? parsed : nil), raw_response: raw_response_for(response, body), error_message: e.message, latency_ms: elapsed_ms(started), status: :partial }
   rescue Faraday::Error, Error => e
     raise e
   end
@@ -46,6 +46,13 @@ class DeepSeekService
   def utf8(raw)
     string = raw.to_s.dup.force_encoding(Encoding::UTF_8)
     string.valid_encoding? ? string : string.scrub
+  end
+
+  def raw_response_for(response, body)
+    return body if body
+    response&.body && utf8(response.body)
+  rescue StandardError
+    nil
   end
 
   def connection

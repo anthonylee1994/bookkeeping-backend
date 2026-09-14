@@ -860,9 +860,9 @@ dokku run bookkeeping-backend sh -c '
 - [x] `bundle exec rspec` 全綠
 - [x] Coverage > 80%
 - [x] OpenAPI 喺 `/api-docs` 睇到
-- [ ] `dokku logs bookkeeping-backend -t` 見到 structured log + request_id
-- [ ] Backup script 跑完見到 2 個 db backup
-- [ ] `dokku ps:report bookkeeping-backend` 只有 web process
+- [x] `dokku logs bookkeeping-backend -t` 見到 structured log + request_id
+- [x] Backup script 跑完見到 2 個 db backup
+- [x] `dokku ps:report bookkeeping-backend` 只有 web process
 
 ---
 

@@ -1,5 +1,6 @@
 require "spec_helper"
 ENV["RAILS_ENV"] ||= "test"
+ENV["JWT_SECRET"] ||= "test-jwt-secret"
 require_relative "../config/environment"
 abort("The Rails environment is running in production mode!") if Rails.env.production?
 require "rspec/rails"

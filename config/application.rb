@@ -16,6 +16,7 @@ module BookkeepingBackend
     config.autoload_lib(ignore: %w[assets tasks])
 
     config.api_only = true
+    config.i18n.default_locale = :"zh-TW"
 
     config.time_zone = "Asia/Hong_Kong"
     config.active_record.default_timezone = :local

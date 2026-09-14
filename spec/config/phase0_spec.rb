@@ -49,6 +49,11 @@ RSpec.describe "Phase 0 configuration" do
     expect(uuid_type[:limit]).to eq(36)
   end
 
+  it "parses json with a positional options hash" do
+    expect(JSON.parse(%({ "a": 1 }), {})).to eq("a" => 1)
+    expect(ActiveSupport::JSON.decode(%({ "a": 1 }))).to eq("a" => 1)
+  end
+
   it "creates records with uuid v4 primary keys" do
     conn = ActiveRecord::Base.connection
     conn.create_table :uuid_probes, id: :uuid, force: true do |t|

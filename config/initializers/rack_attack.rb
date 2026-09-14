@@ -27,7 +27,7 @@ class Rack::Attack
         {
           error: {
             code: "rate_limited",
-            message: "Too many requests",
+            message: I18n.t("api.errors.rate_limited"),
             request_id: request.env["action_dispatch.request_id"]
           }
         }.to_json

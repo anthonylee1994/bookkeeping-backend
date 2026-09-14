@@ -8,6 +8,9 @@ zh-TW:
       invalid_credentials: "使用者名稱或密碼不正確"
       rate_limited: "請求過於頻繁，請稍後再試"
       account_in_use: "帳戶已有交易或週期性規則，無法刪除"
+      invalid_value: "參數值無效"
+      invalid_refund: "退款金額無效或超過可退款金額"
+      idempotency_conflict: "相同的 Idempotency-Key 已用於不同請求"
   activerecord:
     attributes:
       user:

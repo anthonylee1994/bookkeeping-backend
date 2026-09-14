@@ -376,30 +376,34 @@ POST /api/v1/transactions/550e8400-e29b-41d4-a716-446655440000/refund
 4. **Monthly**：Asia/Hong_Kong 1 號 00:00:00 至月末 23:59:59.999999
 5. **Transfer**：唔計入 income/expense summary；獨立 `transfers` key
 6. **Recurring 產生邏輯**（request-time catch-up，**唔用 background job**）：
-   - 已 authenticate 嘅 request 開頭呼叫 `RecurringCatchUp.call(user: current_user)`（`Time.use_zone("Asia/Hong_Kong")`）
-   - 跳過：Auth、Health
-   - 只處理該 user `status = active` 且 `next_run_at <= now` 嘅 rule
-   - 用 `RecurringOccurrence` unique index 保證 idempotent；併發 request 撞 unique → rescue 當已處理
-   - 產生後 `last_run_at = now`，`next_run_at = 下次`
-   - 若 `end_on` 已過 → status = ended
-   - **Backfill 規則**：
-     - `RECURRING_BACKFILL_ENABLED=false`（預設）：user 幾耐冇開 app 都只產生「今日」一筆，中間 occurrence 寫 RecurringOccurrence 但 `transaction_id = nil`
-     - `RECURRING_BACKFILL_ENABLED=true`：補最多 `RECURRING_BACKFILL_MAX_DAYS`（預設 90）日，超過就 skip 並 log
-     - 無論開唔開，每個 due occurrence 都會寫 RecurringOccurrence，避免重複
-   - 刪咗由 recurring 產生嘅 transaction：occurrence 保留、`transaction_id = nil`，**唔會**再為該日自動產生
-   - `run_now`：若該 `occurred_on` 未有 transaction，補建並關聯；已有 → 409 `already_materialized`
-   - `skip_next`：為下一次寫 RecurringOccurrence（`transaction_id = nil`），推進 `next_run_at`
+
+- 已 authenticate 嘅 request 開頭呼叫 `RecurringCatchUp.call(user: current_user)`（`Time.use_zone("Asia/Hong_Kong")`）
+- 跳過：Auth、Health
+- 只處理該 user `status = active` 且 `next_run_at <= now` 嘅 rule
+- 用 `RecurringOccurrence` unique index 保證 idempotent；併發 request 撞 unique → rescue 當已處理
+- 產生後 `last_run_at = now`，`next_run_at = 下次`
+- 若 `end_on` 已過 → status = ended
+- **Backfill 規則**：
+  - `RECURRING_BACKFILL_ENABLED=false`（預設）：user 幾耐冇開 app 都只產生「今日」一筆，中間 occurrence 寫 RecurringOccurrence 但 `transaction_id = nil`
+  - `RECURRING_BACKFILL_ENABLED=true`：補最多 `RECURRING_BACKFILL_MAX_DAYS`（預設 90）日，超過就 skip 並 log
+  - 無論開唔開，每個 due occurrence 都會寫 RecurringOccurrence，避免重複
+- 刪咗由 recurring 產生嘅 transaction：occurrence 保留、`transaction_id = nil`，**唔會**再為該日自動產生
+- `run_now`：若該 `occurred_on` 未有 transaction，補建並關聯；已有 → 409 `already_materialized`
+- `skip_next`：為下一次寫 RecurringOccurrence（`transaction_id = nil`），推進 `next_run_at`
+
 7. **刪除分類**：hard delete；交易保留，`category_id` SET NULL
 8. **刪除帳戶**：若有任何交易（含作 transfer 目標）或 RecurringRule → 422 `account_in_use`；否則 hard delete
 9. **刪除交易**：hard delete。指向佢嘅 refund 一齊刪（`dependent: :destroy`）。若 `source = recurring`，對應 RecurringOccurrence.transaction_id SET NULL，唔再生該 occurrence
 10. **刪除商家**：hard delete；交易 `merchant_id` SET NULL
 11. **刪除 RecurringRule**：hard delete；已產生 transaction 保留；occurrences cascade delete
 12. **AI 解析流程**：
-    - 上傳 → LIHKG → 回 URL + sha256（唔落 DB）
-    - parse：whitelist host → sha256 查 AiImportLog 24 小時內成功記錄 → 有就回 cache
-    - 冇就：backend fetch 圖 → base64 inline → DeepSeek `deepseek-flash` vision
-    - 回傳 preview JSON（唔直接入帳）
-    - 用戶 confirm → 建立 transaction（`image_urls` + `source = ai`）+ AiImportLog.transaction_id
+
+- 上傳 → LIHKG → 回 URL + sha256（唔落 DB）
+  - parse：whitelist host → sha256 查 AiImportLog 24 小時內成功記錄 → 有就回 cache
+  - 冇就：backend fetch 圖 → base64 inline → DeepSeek `deepseek-flash` vision
+  - 回傳 preview JSON（唔直接入帳）
+  - 用戶 confirm → 建立 transaction（`image_urls` + `source = ai`）+ AiImportLog.transaction_id
+
 13. **AI JSON schema**（用 JSON Schema 驗證）：
 
 ```json
@@ -418,19 +422,21 @@ POST /api/v1/transactions/550e8400-e29b-41d4-a716-446655440000/refund
 }
 ```
 
-14. **Idempotency-Key**：`POST /transactions` 同 `/ai/confirm` 支援，獨立 `IdempotencyKey` table，24 小時過期，host cron 每日清
-15. **重複交易偵測**：建立前 check 同日同商戶同金額，回 warning 但唔 block
-16. **退款**：
-    - `refund_of_id` 指向原交易
-    - `kind` 同原交易相同（expense 退 expense）
-    - `amount_cents` 正數
-    - Summary 用 `refund_cents` 欄位獨立統計，計算：
-      - `net_expense = expense_cents - refund_cents`
-      - `net_cents = income_cents - net_expense`
-    - `by_category` 各自顯示 `expense_cents` 同 `refund_cents`
-17. **SSRF 防護**：`/ai/parse` 只收 whitelist host 嘅 `image_url`（`ENV["LIHKG_ALLOWED_HOSTS"]`，預設 `img.eservice-hk.net`）；backend 自己 fetch。非 whitelist → 400
-18. **LIHKG 圖床風險**：用 stoplight circuit breaker，連續失敗 5 次開路 60 秒；失敗時回 502，log 詳細。出站 upload Faraday request **必須**帶 `Origin: https://lihkg.com`（硬編碼，圖床會 check Origin）
-19. **Pagy 上限**：`Pagy::DEFAULT[:max_per_page] = 100`
+1. **Idempotency-Key**：`POST /transactions` 同 `/ai/confirm` 支援，獨立 `IdempotencyKey` table，24 小時過期，host cron 每日清
+2. **重複交易偵測**：建立前 check 同日同商戶同金額，回 warning 但唔 block
+3. **退款**：
+
+- `refund_of_id` 指向原交易
+  - `kind` 同原交易相同（expense 退 expense）
+  - `amount_cents` 正數
+  - Summary 用 `refund_cents` 欄位獨立統計，計算：
+    - `net_expense = expense_cents - refund_cents`
+    - `net_cents = income_cents - net_expense`
+  - `by_category` 各自顯示 `expense_cents` 同 `refund_cents`
+
+4. **SSRF 防護**：`/ai/parse` 只收 whitelist host 嘅 `image_url`（`ENV["LIHKG_ALLOWED_HOSTS"]`，預設 `img.eservice-hk.net`）；backend 自己 fetch。非 whitelist → 400
+5. **LIHKG 圖床風險**：用 stoplight circuit breaker，連續失敗 5 次開路 60 秒；失敗時回 502，log 詳細。出站 upload Faraday request **必須**帶 `Origin: https://lihkg.com`（硬編碼，圖床會 check Origin）
+6. **Pagy 上限**：`Pagy::DEFAULT[:max_per_page] = 100`
 
 ---
 
@@ -519,13 +525,13 @@ dokku ps:scale bookkeeping-backend web=1
 
 **驗收**
 
-- [ ] `rails s` 起得
-- [ ] `git push dokku main` 成功 build
-- [ ] `/up` 回 200
-- [ ] `dokku storage:list bookkeeping-backend` 見到 mount
-- [ ] `dokku enter bookkeeping-backend web ls -la /app/storage` 見到 primary + cache sqlite 檔
-- [ ] generators `primary_key_type: :uuid`；SQLite `native_database_types[:uuid]` = `varchar(36)`
-- [ ] `create_table ..., id: :uuid` 建出嚟嘅 PK 係 UUID string，唔係 integer
+- [x] `rails s` 起得
+- [x] `git push dokku main` 成功 build
+- [x] `/up` 回 200
+- [x] `dokku storage:list bookkeeping-backend` 見到 mount
+- [x] `dokku enter bookkeeping-backend web ls -la /app/storage` 見到 primary + cache sqlite 檔
+- [x] generators `primary_key_type: :uuid`；SQLite `native_database_types[:uuid]` = `varchar(36)`
+- [x] `create_table ..., id: :uuid` 建出嚟嘅 PK 係 UUID string，唔係 integer
 
 ---
 
@@ -535,19 +541,19 @@ dokku ps:scale bookkeeping-backend web=1
 
 **任務**
 
-- [ ] Migration：User（2.1），`create_table :users, id: :uuid`
-- [ ] `User` model：`has_secure_password`、username 轉 lowercase、password 最少 8 字、**冇 email**
-- [ ] `JsonWebToken` service：
-  - `encode(user_id)`：用 `JWT_SECRET`；payload 含 `user_id`（UUID string）/ `iat`，**唔寫 `exp`、唔寫 `jti`**
+- [x] Migration：User（2.1），`create_table :users, id: :uuid`
+- [x] `User` model：`has_secure_password`、username 轉 lowercase、password 最少 8 字、**冇 email**
+- [x] `JsonWebToken` service：
+  - `encode(user_id)`：用 `JWT_SECRET`；payload 含 `user_id`（UUID string）/ `iat`，**唔寫** `exp`**、唔寫** `jti`
   - `decode(token)`：`JWT.decode(token, secret, true, { verify_expiration: false, algorithm: "HS256" })`
-- [ ] `ApplicationController`：
+- [x] `ApplicationController`：
   - `authenticate_user!` before_action
   - 解析 `Authorization: Bearer <token>`
   - decode 後 `User.find(payload["user_id"])`；user 唔存在 → 401
   - `catch_up_recurring` before_action 喺 Phase 4 先加
-- [ ] `AuthController`：register / login（**冇 logout**）
-- [ ] login：簽發 JWT，**唔**寫任何 session row
-- [ ] Rate limit login（Rack::Attack）
+- [x] `AuthController`：register / login（**冇 logout**）
+- [x] login：簽發 JWT，**唔**寫任何 session row
+- [x] Rate limit login（Rack::Attack）
 
 **API 範例**
 
@@ -572,14 +578,14 @@ Content-Type: application/json
 
 **驗收**
 
-- [ ] 錯誤密碼回 401 + `{ "error": { "code": "invalid_credentials" } }`
-- [ ] 無 token 打 `/me` 回 401
-- [ ] 壞 token / 亂簽 token 打 `/me` 回 401
-- [ ] 兩個裝置用同一 token 都 work
-- [ ] **冇** `DELETE /auth/logout`、**冇** `/sessions`（回 404）
-- [ ] register / login **唔收** email；`User` **冇** email 欄位
-- [ ] `Alice` 同 `alice` 視為同一個 username（lowercase）
-- [ ] register / login 回嘅 `user.id` 係 UUID string（36 chars），唔係 integer
+- [x] 錯誤密碼回 401 + `{ "error": { "code": "invalid_credentials" } }`
+- [x] 無 token 打 `/me` 回 401
+- [x] 壞 token / 亂簽 token 打 `/me` 回 401
+- [x] 兩個裝置用同一 token 都 work
+- [x] **冇** `DELETE /auth/logout`、**冇** `/sessions`（回 404）
+- [x] register / login **唔收** email；`User` **冇** email 欄位
+- [x] `Alice` 同 `alice` 視為同一個 username（lowercase）
+- [x] register / login 回嘅 `user.id` 係 UUID string（36 chars），唔係 integer
 
 ---
 
@@ -587,25 +593,25 @@ Content-Type: application/json
 
 **任務**
 
-- [ ] Migrations（2.2 / 2.3 / 2.4）：全部 `id: :uuid`；FK 一律 `type: :uuid`
-- [ ] User 註冊後 callback 建立：
+- [x] Migrations（2.2 / 2.3 / 2.4）：全部 `id: :uuid`；FK 一律 `type: :uuid`
+- [x] User 註冊後 callback 建立：
   - 「現金」Account（kind=cash）
   - 預設分類：
     - Expense：飲食、交通、娛樂、購物、醫療、住屋、水電、其他支出
     - Income：薪水、獎金、投資、兼職、其他收入
-- [ ] Account / Category / Merchant controller CRUD + hard delete
+- [x] Account / Category / Merchant controller CRUD + hard delete
   - Category / Merchant：delete 時 FK nullify
   - Account：有交易或 RecurringRule → 422 `account_in_use`
-- [ ] Merchant autocomplete：`GET /merchants?q=`，回 top 10，SQLite `LIKE`
-- [ ] 所有 query scope 到 `current_user`
+- [x] Merchant autocomplete：`GET /merchants?q=`，回 top 10，SQLite `LIKE`
+- [x] 所有 query scope 到 `current_user`
 
 **驗收**
 
-- [ ] 新 user 登入後 `GET /accounts` 見到「現金」
-- [ ] 刪分類後 `GET /categories` 唔見，但舊交易仍顯示 category_id = null
-- [ ] 帳戶有交易時 DELETE 回 422 `account_in_use`
-- [ ] 打其他人 category id 回 404
-- [ ] 預設分類冇一個叫「收入」（避免同 kind=income 混淆）
+- [x] 新 user 登入後 `GET /accounts` 見到「現金」
+- [x] 刪分類後 `GET /categories` 唔見，但舊交易仍顯示 category_id = null
+- [x] 帳戶有交易時 DELETE 回 422 `account_in_use`
+- [x] 打其他人 category id 回 404
+- [x] 預設分類冇一個叫「收入」（避免同 kind=income 混淆）
 
 ---
 
@@ -613,22 +619,22 @@ Content-Type: application/json
 
 **任務**
 
-- [ ] Migration：Transaction（2.5）、IdempotencyKey（2.9）：全部 `id: :uuid`；FK 一律 `type: :uuid`
-- [ ] `Transaction` model：enum kind、validation、scope、`by_user`
-- [ ] `TransactionsController`：index（filter + sort + pagy）、create、show、update、destroy（hard delete；關聯 refund `dependent: :destroy`）
-- [ ] Idempotency middleware / concern：
+- [x] Migration：Transaction（2.5）、IdempotencyKey（2.9）：全部 `id: :uuid`；FK 一律 `type: :uuid`
+- [x] `Transaction` model：enum kind、validation、scope、`by_user`
+- [x] `TransactionsController`：index（filter + sort + pagy）、create、show、update、destroy（hard delete；關聯 refund `dependent: :destroy`）
+- [x] Idempotency middleware / concern：
   - 讀 `Idempotency-Key` header
   - 查 IdempotencyKey table
   - 若存在且 `created_at > 24.hours.ago` → 回 cache response
   - 否則執行 request，寫入 IdempotencyKey
   - 過期 key 由 host cron `rails maintenance:cleanup` 每日清 > 24 小時
-- [ ] 建立時：update `merchant.usage_count`、自動 dedupe warning
-- [ ] `POST /transactions/:id/refund`：
+- [x] 建立時：update `merchant.usage_count`、自動 dedupe warning
+- [x] `POST /transactions/:id/refund`：
   - 接受可選 `amount_cents`（預設全額）
   - 建立新 transaction，`refund_of_id = 原 id`
   - `kind` 同原交易
   - `source = manual`
-- [ ] `POST /transactions/:id/duplicate`：複製欄位，`occurred_at = now`
+- [x] `POST /transactions/:id/duplicate`：複製欄位，`occurred_at = now`
 
 **Filter 參數**
 
@@ -646,13 +652,13 @@ Content-Type: application/json
 
 **驗收**
 
-- [ ] 建立 transfer 時 category_id 必須 nil
-- [ ] 同 `Idempotency-Key` 打兩次只建一筆
-- [ ] 打其他人 transaction id 回 404
-- [ ] Refund 後原交易 `net_amount_cents` 正確
-- [ ] 刪原交易後，關聯 refund 一齊消失
-- [ ] 刪交易後 `GET /transactions` 真係冇嗰筆（hard delete）
-- [ ] Bullet 冇 N+1 warning
+- [x] 建立 transfer 時 category_id 必須 nil
+- [x] 同 `Idempotency-Key` 打兩次只建一筆
+- [x] 打其他人 transaction id 回 404
+- [x] Refund 後原交易 `net_amount_cents` 正確
+- [x] 刪原交易後，關聯 refund 一齊消失
+- [x] 刪交易後 `GET /transactions` 真係冇嗰筆（hard delete）
+- [x] Bullet 冇 N+1 warning
 
 ---
 

@@ -9,6 +9,12 @@ Rails.application.routes.draw do
       resources :accounts, only: %i[index create update destroy]
       resources :categories, only: %i[index create update destroy]
       resources :merchants, only: %i[index create destroy]
+      resources :transactions, only: %i[index create show update destroy] do
+        member do
+          post :refund
+          post :duplicate
+        end
+      end
     end
   end
 end

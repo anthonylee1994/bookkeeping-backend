@@ -782,21 +782,21 @@ upload → LIHKG URL（只回 client，唔寫 Attachment）
 
 **任務**
 
-- [ ] `DashboardController#show`：
+- [x] `DashboardController#show`：
   - 總收入 / 總支出 / 退款 / 淨額（預設當月）
   - 最近 10 筆交易
   - 分類佔比（top 5，含 refund）
   - 帳戶餘額（initial + sum(income) - sum(expense) + sum(refund)）
   - 週期交易提醒（7 日內 next_run_at）
-- [ ] `SummariesController`：
+- [x] `SummariesController`：
   - `daily`：Asia/Hong_Kong 當日 00:00:00 - 23:59:59
   - `weekly`：Mon 00:00:00 - Sun 23:59:59
   - `monthly`：1 號 00:00:00 - 月末 23:59:59
   - 排除 transfer（獨立 `transfers` key）
   - 回 by_category（含 refund_cents）、by_account、transfers、transactions 分頁
   - catch-up 已喺 before_action 跑完，summary 只計真實 Transaction
-- [ ] 用 `Time.use_zone("Asia/Hong_Kong")` 包住
-- [ ] 加 index 支援 range query
+- [x] 用 `Time.use_zone("Asia/Hong_Kong")` 包住
+- [x] 加 index 支援 range query
 
 **計算邏輯**：
 
@@ -810,12 +810,12 @@ net_cents      = income_cents - net_expense
 
 **驗收**
 
-- [ ] 9/14（週日）weekly = 9/8 Mon - 9/14 Sun
-- [ ] 9/15（週一）weekly = 9/15 - 9/21
-- [ ] monthly 9 月 = 9/1 - 9/30
-- [ ] transfer 唔計入 income/expense，喺 `transfers` key
-- [ ] 退款正確扣減 net_expense
-- [ ] 日界用 Asia/Hong_Kong：`2026-09-14 23:59:59 +08:00` 算 9/14，`2026-09-15 00:00:00 +08:00` 算 9/15
+- [x] 9/14（週日）weekly = 9/8 Mon - 9/14 Sun
+- [x] 9/15（週一）weekly = 9/15 - 9/21
+- [x] monthly 9 月 = 9/1 - 9/30
+- [x] transfer 唔計入 income/expense，喺 `transfers` key
+- [x] 退款正確扣減 net_expense
+- [x] 日界用 Asia/Hong_Kong：`2026-09-14 23:59:59 +08:00` 算 9/14，`2026-09-15 00:00:00 +08:00` 算 9/15
 
 ---
 

@@ -19,6 +19,22 @@ paths:
     get:
       summary: Health check
       responses: { '200': { description: Healthy } }
+  /health:
+    get:
+      summary: Overall health check
+      responses: { '200': { description: Healthy }, '503': { description: One or more dependencies are unhealthy } }
+  /health/db:
+    get:
+      summary: Database health check
+      responses: { '200': { description: Healthy }, '503': { description: Database is unhealthy } }
+  /health/deepseek:
+    get:
+      summary: DeepSeek health check
+      responses: { '200': { description: Healthy }, '503': { description: DeepSeek is unavailable } }
+  /health/lihkg:
+    get:
+      summary: LIHKG image host health check
+      responses: { '200': { description: Healthy }, '503': { description: LIHKG is unavailable } }
   /api/v1/auth/register:
     post:
       tags: [Auth]

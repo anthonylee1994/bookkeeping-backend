@@ -2,6 +2,10 @@ Rails.application.routes.draw do
   mount Rswag::Ui::Engine => "/api-docs" if defined?(Rswag::Ui::Engine)
   mount Rswag::Api::Engine => "/api-docs" if defined?(Rswag::Api::Engine)
   get "up" => "rails/health#show", as: :rails_health_check
+  get "health" => "health#show"
+  get "health/db" => "health#db"
+  get "health/deepseek" => "health#deepseek"
+  get "health/lihkg" => "health#lihkg"
 
   namespace :api do
     namespace :v1 do

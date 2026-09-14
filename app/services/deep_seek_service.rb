@@ -24,21 +24,29 @@ class DeepSeekService
 
   def call
     started = Process.clock_gettime(Process::CLOCK_MONOTONIC)
+    body = nil
     response = connection.post("/chat/completions", request_body.to_json)
     raise Error, "DeepSeek returned #{response.status}" unless response.success?
 
-    raw = JSON.parse(response.body)
+    body = utf8(response.body)
+    raw = JSON.parse(body)
     content = raw.dig("choices", 0, "message", "content").to_s
     parsed = JSON.parse(content)
     JSON::Validator.validate!(SCHEMA, parsed)
-    { parsed: parsed, raw_response: response.body, tokens_in: raw.dig("usage", "prompt_tokens"), tokens_out: raw.dig("usage", "completion_tokens"), latency_ms: elapsed_ms(started), status: :success }
+    { parsed: parsed, raw_response: body, tokens_in: raw.dig("usage", "prompt_tokens"), tokens_out: raw.dig("usage", "completion_tokens"), latency_ms: elapsed_ms(started), status: :success }
   rescue JSON::ParserError, JSON::Schema::ValidationError, JSON::Schema::JsonParseError => e
-    { parsed: (defined?(parsed) ? parsed : nil), raw_response: (response&.body rescue nil), error_message: e.message, latency_ms: elapsed_ms(started), status: :partial }
+    { parsed: (defined?(parsed) ? parsed : nil), raw_response: (body || (response&.body && utf8(response.body)) rescue nil), error_message: e.message, latency_ms: elapsed_ms(started), status: :partial }
   rescue Faraday::Error, Error => e
     raise e
   end
 
   private
+
+  # Faraday 回傳嘅 body 係 ASCII-8BIT，直接寫入 UTF-8 text column 會爆 UndefinedConversionError。
+  def utf8(raw)
+    string = raw.to_s.dup.force_encoding(Encoding::UTF_8)
+    string.valid_encoding? ? string : string.scrub
+  end
 
   def connection
     Faraday.new(url: ENV.fetch("DEEPSEEK_BASE_URL", "https://api.deepseek.com")) do |f|

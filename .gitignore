@@ -39,3 +39,4 @@
 # RSpec
 /spec/examples.txt
 
+coverage/

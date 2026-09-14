@@ -43,6 +43,19 @@ RSpec.describe "Phase 5 receipt and AI APIs", type: :request do
     expect(response).to have_http_status(:bad_request)
   end
 
+  it "handles multibyte DeepSeek responses without encoding errors" do
+    image = "\xFF\xD8\xFF\xE0receipt".b
+    stub_request(:get, "https://img.eservice-hk.net/receipt-cn.jpg").to_return(status: 200, body: image, headers: { "Content-Type" => "image/jpeg" })
+    parsed = { amount_cents: 1234, kind: "expense", occurred_at: "2026-09-14T10:00:00+08:00", merchant_name: "茶餐廳", note: "午餐", confidence: 0.9 }
+    body = { choices: [ { message: { content: parsed.to_json } } ], usage: { prompt_tokens: 10, completion_tokens: 8 } }.to_json.b
+    stub_request(:post, "https://api.deepseek.com/chat/completions").to_return(status: 200, body: body)
+
+    post "/api/v1/ai/parse", params: { image_url: "https://img.eservice-hk.net/receipt-cn.jpg" }, headers: headers, as: :json
+
+    expect(response).to have_http_status(:ok)
+    expect(json.dig("data", "parsed", "merchant_name")).to eq("茶餐廳")
+  end
+
   it "confirms an AI parse into an AI transaction" do
     image_sha = Digest::SHA256.hexdigest("receipt")
     log = user.ai_import_logs.create!(image_urls: [ "https://img.eservice-hk.net/a.jpg" ], image_sha256: image_sha, status: :success, parsed_json: { amount_cents: 500, kind: "expense", occurred_at: Time.zone.now.iso8601 })

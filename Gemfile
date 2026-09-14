@@ -40,3 +40,5 @@ group :development, :test do
   gem "webmock"
   gem "vcr"
 end
+
+gem "faraday-multipart", "~> 1.2"

@@ -12,6 +12,7 @@ zh-TW:
       invalid_refund: "退款金額無效或超過可退款金額"
       idempotency_conflict: "相同的 Idempotency-Key 已用於不同請求"
       already_materialized: "該次週期交易已經建立"
+      invalid_upload: "圖片檔案無效"
   activerecord:
     attributes:
       user:

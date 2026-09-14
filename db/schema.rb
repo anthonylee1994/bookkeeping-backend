@@ -10,7 +10,7 @@
 #
 # It's strongly recommended that you check this file into your version control system.
 
-ActiveRecord::Schema[8.1].define(version: 2026_09_14_150000) do
+ActiveRecord::Schema[8.1].define(version: 2026_09_14_160000) do
   create_table "accounts", id: { type: :string, limit: 36 }, force: :cascade do |t|
     t.string "color"
     t.datetime "created_at", null: false
@@ -23,6 +23,29 @@ ActiveRecord::Schema[8.1].define(version: 2026_09_14_150000) do
     t.string "user_id", limit: 36, null: false
     t.index ["user_id", "name"], name: "index_accounts_on_user_id_and_name", unique: true
     t.index ["user_id"], name: "index_accounts_on_user_id"
+  end
+
+  create_table "ai_import_logs", id: { type: :string, limit: 36 }, force: :cascade do |t|
+    t.datetime "created_at", null: false
+    t.text "error_message"
+    t.string "idempotency_key"
+    t.string "image_sha256", null: false
+    t.json "image_urls", default: [], null: false
+    t.integer "latency_ms"
+    t.string "model", default: "deepseek-flash", null: false
+    t.json "parsed_json"
+    t.string "provider", default: "deepseek", null: false
+    t.text "raw_response"
+    t.integer "status", default: 0, null: false
+    t.integer "tokens_in"
+    t.integer "tokens_out"
+    t.string "transaction_id", limit: 36
+    t.datetime "updated_at", null: false
+    t.string "user_id", limit: 36, null: false
+    t.index ["image_sha256"], name: "index_ai_import_logs_on_image_sha256"
+    t.index ["transaction_id"], name: "index_ai_import_logs_on_transaction_id"
+    t.index ["user_id", "image_sha256", "created_at"], name: "idx_on_user_id_image_sha256_created_at_a5f17f3d34"
+    t.index ["user_id"], name: "index_ai_import_logs_on_user_id"
   end
 
   create_table "categories", id: { type: :string, limit: 36 }, force: :cascade do |t|
@@ -141,6 +164,8 @@ ActiveRecord::Schema[8.1].define(version: 2026_09_14_150000) do
   end
 
   add_foreign_key "accounts", "users", on_delete: :cascade
+  add_foreign_key "ai_import_logs", "transactions", on_delete: :nullify
+  add_foreign_key "ai_import_logs", "users", on_delete: :cascade
   add_foreign_key "categories", "users", on_delete: :cascade
   add_foreign_key "idempotency_keys", "users", on_delete: :cascade
   add_foreign_key "merchants", "categories", column: "default_category_id", on_delete: :nullify

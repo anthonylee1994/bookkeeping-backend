@@ -391,12 +391,12 @@ POST /api/v1/transactions/550e8400-e29b-41d4-a716-446655440000/refund
 - `run_now`：若該 `occurred_on` 未有 transaction，補建並關聯；已有 → 409 `already_materialized`
 - `skip_next`：為下一次寫 RecurringOccurrence（`transaction_id = nil`），推進 `next_run_at`
 
-7. **刪除分類**：hard delete；交易保留，`category_id` SET NULL
-8. **刪除帳戶**：若有任何交易（含作 transfer 目標）或 RecurringRule → 422 `account_in_use`；否則 hard delete
-9. **刪除交易**：hard delete。指向佢嘅 refund 一齊刪（`dependent: :destroy`）。若 `source = recurring`，對應 RecurringOccurrence.transaction_id SET NULL，唔再生該 occurrence
-10. **刪除商家**：hard delete；交易 `merchant_id` SET NULL
-11. **刪除 RecurringRule**：hard delete；已產生 transaction 保留；occurrences cascade delete
-12. **AI 解析流程**：
+1. **刪除分類**：hard delete；交易保留，`category_id` SET NULL
+2. **刪除帳戶**：若有任何交易（含作 transfer 目標）或 RecurringRule → 422 `account_in_use`；否則 hard delete
+3. **刪除交易**：hard delete。指向佢嘅 refund 一齊刪（`dependent: :destroy`）。若 `source = recurring`，對應 RecurringOccurrence.transaction_id SET NULL，唔再生該 occurrence
+4. **刪除商家**：hard delete；交易 `merchant_id` SET NULL
+5. **刪除 RecurringRule**：hard delete；已產生 transaction 保留；occurrences cascade delete
+6. **AI 解析流程**：
 
 - 上傳 → LIHKG → 回 URL + sha256（唔落 DB）
   - parse：whitelist host → sha256 查 AiImportLog 24 小時內成功記錄 → 有就回 cache
@@ -404,7 +404,7 @@ POST /api/v1/transactions/550e8400-e29b-41d4-a716-446655440000/refund
   - 回傳 preview JSON（唔直接入帳）
   - 用戶 confirm → 建立 transaction（`image_urls` + `source = ai`）+ AiImportLog.transaction_id
 
-13. **AI JSON schema**（用 JSON Schema 驗證）：
+1. **AI JSON schema**（用 JSON Schema 驗證）：
 
 ```json
 {
@@ -434,9 +434,9 @@ POST /api/v1/transactions/550e8400-e29b-41d4-a716-446655440000/refund
     - `net_cents = income_cents - net_expense`
   - `by_category` 各自顯示 `expense_cents` 同 `refund_cents`
 
-4. **SSRF 防護**：`/ai/parse` 只收 whitelist host 嘅 `image_url`（`ENV["LIHKG_ALLOWED_HOSTS"]`，預設 `img.eservice-hk.net`）；backend 自己 fetch。非 whitelist → 400
-5. **LIHKG 圖床風險**：用 stoplight circuit breaker，連續失敗 5 次開路 60 秒；失敗時回 502，log 詳細。出站 upload Faraday request **必須**帶 `Origin: https://lihkg.com`（硬編碼，圖床會 check Origin）
-6. **Pagy 上限**：`Pagy::DEFAULT[:max_per_page] = 100`
+1. **SSRF 防護**：`/ai/parse` 只收 whitelist host 嘅 `image_url`（`ENV["LIHKG_ALLOWED_HOSTS"]`，預設 `img.eservice-hk.net`）；backend 自己 fetch。非 whitelist → 400
+2. **LIHKG 圖床風險**：用 stoplight circuit breaker，連續失敗 5 次開路 60 秒；失敗時回 502，log 詳細。出站 upload Faraday request **必須**帶 `Origin: https://lihkg.com`（硬編碼，圖床會 check Origin）
+3. **Pagy 上限**：`Pagy::DEFAULT[:max_per_page] = 100`
 
 ---
 
@@ -704,8 +704,8 @@ Content-Type: application/json
 
 **任務**
 
-- [ ] Migration：AiImportLog（2.8）：`id: :uuid`；FK 一律 `type: :uuid`
-- [ ] `LihkgUploadService`：
+- [x] Migration：AiImportLog（2.8）：`id: :uuid`；FK 一律 `type: :uuid`
+- [x] `LihkgUploadService`：
   - endpoint 由 `ENV["LIHKG_UPLOAD_URL"]` 讀
   - multipart form，field name `file`
   - 出站 header **必須** `Origin: https://lihkg.com`（硬編碼；圖床會 check，唔係呢個 Origin 會拒。**唔好**用我哋自己 API 嘅 CORS origin）
@@ -714,8 +714,8 @@ Content-Type: application/json
   - timeout 10s
   - **Stoplight circuit breaker**：連續失敗 5 次開路 60 秒
   - 失敗回 502 + structured log
-- [ ] `ReceiptsController#upload`：收圖 → sha256 → 呼叫 LIHKG → 回 `{ url, sha256 }`（**唔落 DB**）
-- [ ] `DeepSeekService`：
+- [x] `ReceiptsController#upload`：收圖 → sha256 → 呼叫 LIHKG → 回 `{ url, sha256 }`（**唔落 DB**）
+- [x] `DeepSeekService`：
   - `parse(image_base64:)` → 用 `deepseek-flash` vision
   - Request body：
     ```json
@@ -737,7 +737,7 @@ Content-Type: application/json
     ```
   - 用 JSON Schema 驗證回傳
   - Log tokens / latency / raw_response 到 AiImportLog（連 `image_urls`）
-- [ ] `AiController#parse`：
+- [x] `AiController#parse`：
   - 接受 `{ "image_url": "https://..." }`
   - Host 必須喺 `LIHKG_ALLOWED_HOSTS`（預設 `img.eservice-hk.net`），否則 400
   - 先 fetch 圖計 sha256，查 `(user_id, image_sha256)` 24 小時 cache
@@ -747,7 +747,7 @@ Content-Type: application/json
     - `success` → 200
     - `partial` → 200（confidence 低）
     - `failed` → 502
-- [ ] `AiController#confirm`：
+- [x] `AiController#confirm`：
   - 用戶確認 → 建 Transaction（`image_urls` = 確認嘅 URL array，`source = ai`）→ 關聯 AiImportLog
   - 支援 `Idempotency-Key`
 
@@ -767,14 +767,14 @@ upload → LIHKG URL（只回 client，唔寫 Attachment）
 
 **驗收**
 
-- [ ] 上傳 jpg 回 `{ url, sha256 }`，DB **冇** Attachment 表 / row
-- [ ] 打 LIHKG upload 嘅 HTTP request 帶 `Origin: https://lihkg.com`（WebMock 驗 header）
-- [ ] 上傳 .exe 回 422
-- [ ] 同一張圖 24 小時內 parse 兩次，第二次直接回 cache，唔再打 DeepSeek
-- [ ] DeepSeek 回唔合法 JSON → status = partial，回 raw + error
-- [ ] confirm 後 `transaction.source = ai` 且 `image_urls` 有嗰條 URL
-- [ ] LIHKG 連續失敗 5 次後，第 6 次直接回 502（circuit open）
-- [ ] `/ai/parse` 傳非 whitelist host（例如 `http://127.0.0.1/`）回 400
+- [x] 上傳 jpg 回 `{ url, sha256 }`，DB **冇** Attachment 表 / row
+- [x] 打 LIHKG upload 嘅 HTTP request 帶 `Origin: https://lihkg.com`（WebMock 驗 header）
+- [x] 上傳 .exe 回 422
+- [x] 同一張圖 24 小時內 parse 兩次，第二次直接回 cache，唔再打 DeepSeek
+- [x] DeepSeek 回唔合法 JSON → status = partial，回 raw + error
+- [x] confirm 後 `transaction.source = ai` 且 `image_urls` 有嗰條 URL
+- [x] LIHKG 連續失敗 5 次後，第 6 次直接回 502（circuit open）
+- [x] `/ai/parse` 傳非 whitelist host（例如 `http://127.0.0.1/`）回 400
 
 ---
 

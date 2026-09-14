@@ -23,6 +23,9 @@ Rails.application.routes.draw do
           post :skip_next
         end
       end
+      post "receipts/upload", to: "receipts#upload"
+      post "ai/parse", to: "ai#parse"
+      post "ai/confirm", to: "ai#confirm"
     end
   end
 end

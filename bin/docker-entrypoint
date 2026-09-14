@@ -1,7 +1,9 @@
 #!/bin/bash -e
 
-# If running the rails server then create or migrate existing database
-if [ "${@: -2:1}" == "./bin/rails" ] && [ "${@: -1:1}" == "server" ]; then
+# If running the web server then create or migrate existing database.
+# Dokku release already runs db:prepare; this covers docker run / rails server.
+if { [ "${1}" = "bundle" ] && [ "${2}" = "exec" ] && [ "${3}" = "puma" ]; } || \
+   { [ "${@: -2:1}" = "./bin/rails" ] && [ "${@: -1:1}" = "server" ]; }; then
   ./bin/rails db:prepare
 fi
 

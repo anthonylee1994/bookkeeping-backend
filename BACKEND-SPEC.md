@@ -28,7 +28,7 @@
 ### 0.3 Dokku 部署總覽
 
 - App name：`bookkeeping-backend`
-- Domain：`book.on99.app`（用現成 cert：`dokku certs:add bookkeeping-backend < /root/certs/on99.app.tar`）
+- Domain：`book-api.on99.app`（用現成 cert：`dokku certs:add bookkeeping-backend < /root/certs/on99.app.tar`）
 - Storage mount：`/var/lib/dokku/data/storage/bookkeeping-backend/storage:/app/storage`
 - SQLite DB：primary / cache 全部放 `/app/storage`（唔開 queue / cable）
 - Procfile：web + release（**冇 worker**）
@@ -464,7 +464,7 @@ release: bundle exec rails db:prepare && bundle exec rails db:migrate
 dokku apps:create bookkeeping-backend
 dokku storage:ensure-directory bookkeeping-backend
 dokku storage:mount bookkeeping-backend /var/lib/dokku/data/storage/bookkeeping-backend:/app/storage
-dokku domains:set bookkeeping-backend book.on99.app
+dokku domains:set bookkeeping-backend book-api.on99.app
 dokku certs:add bookkeeping-backend < /root/certs/on99.app.tar
 dokku checks:enable bookkeeping-backend
 dokku checks:set bookkeeping-backend web.wait-to-retire 30
@@ -906,7 +906,7 @@ Pagy 預設回 `page, items, count, pages`，要自己 map 做上面格式。
 - [ ] `Procfile` 有 `release` task 跑 migration
 - [ ] `dokku storage:mount` 將 `/app/storage` 掛出去
 - [ ] `dokku config:set` 所有 ENV
-- [ ] `dokku domains:set bookkeeping-backend book.on99.app`
+- [ ] `dokku domains:set bookkeeping-backend book-api.on99.app`
 - [ ] `dokku certs:add bookkeeping-backend < /root/certs/on99.app.tar`
 - [ ] `dokku checks:enable` + `web.wait-to-retire 30` + `web.initial-delay 10`
 - [ ] `dokku ps:scale bookkeeping-backend web=1`（**冇 worker**）

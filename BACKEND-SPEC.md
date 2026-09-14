@@ -666,12 +666,12 @@ Content-Type: application/json
 
 **任務**
 
-- [ ] Migration（2.6 / 2.7）：全部 `id: :uuid`；FK 一律 `type: :uuid`
-- [ ] `RecurringRule` model：validation、`next_run_at` 計算、hard delete
-- [ ] `RecurringRuleCalculator` service：
+- [x] Migration（2.6 / 2.7）：全部 `id: :uuid`；FK 一律 `type: :uuid`
+- [x] `RecurringRule` model：validation、`next_run_at` 計算、hard delete
+- [x] `RecurringRuleCalculator` service：
   - `next_occurrence(from:, rule:)` 支援 daily/weekly/monthly/yearly + interval
   - 月末邊界處理（31 號 → 當月最後一日）
-- [ ] `RecurringCatchUp` service（**唔用 job**）：
+- [x] `RecurringCatchUp` service（**唔用 job**）：
   - `call(user:)` 掃該 user `status = active` 且 `next_run_at <= now`
   - 包 `Time.use_zone("Asia/Hong_Kong")`
   - 用 `RecurringOccurrence` unique index 保證 idempotent；撞 unique → rescue 當已處理
@@ -681,22 +681,22 @@ Content-Type: application/json
   - **Backfill 邏輯**：
     - `RECURRING_BACKFILL_ENABLED=false`：只產生今日一筆，中間 occurrence 寫 RecurringOccurrence 但 `transaction_id = nil`
     - `RECURRING_BACKFILL_ENABLED=true`：補最多 `RECURRING_BACKFILL_MAX_DAYS` 日，超過 skip 並 log warning
-- [ ] `ApplicationController`（已 authenticate）`before_action :catch_up_recurring`
+- [x] `ApplicationController`（已 authenticate）`before_action :catch_up_recurring`
   - 跳過：AuthController、HealthController
-- [ ] Controller：CRUD + pause / resume / run_now / skip_next
+- [x] Controller：CRUD + pause / resume / run_now / skip_next
   - `run_now`：該 `occurred_on` 未有 transaction 就補建；已有 → 409 `already_materialized`
   - `skip_next`：寫 RecurringOccurrence（`transaction_id = nil`）並推進 `next_run_at`
 
 **驗收**
 
-- [ ] 建立 daily rule，`run_now` 後見到 transaction
-- [ ] 同一 occurrence catch-up 兩次（或兩個並行 request）唔會重複
-- [ ] 唔打 API 嘅期間 **唔會**自己產生交易（冇 worker）
-- [ ] **Backfill 關閉**：3 日冇 request 之後再 GET `/dashboard`，只補今日一筆
-- [ ] **Backfill 開啟**：3 日冇 request 之後再 GET `/dashboard`，補返 3 筆
-- [ ] 刪一筆 `source=recurring` 交易後再 catch-up，**唔會**再生該日
-- [ ] 31 號 monthly rule，2 月只產生 1 筆喺 2 月最後一日
-- [ ] `end_on` 過後 status = ended，唔再產生
+- [x] 建立 daily rule，`run_now` 後見到 transaction
+- [x] 同一 occurrence catch-up 兩次（或兩個並行 request）唔會重複
+- [x] 唔打 API 嘅期間 **唔會**自己產生交易（冇 worker）
+- [x] **Backfill 關閉**：3 日冇 request 之後再 GET `/dashboard`，只補今日一筆
+- [x] **Backfill 開啟**：3 日冇 request 之後再 GET `/dashboard`，補返 3 筆
+- [x] 刪一筆 `source=recurring` 交易後再 catch-up，**唔會**再生該日
+- [x] 31 號 monthly rule，2 月只產生 1 筆喺 2 月最後一日
+- [x] `end_on` 過後 status = ended，唔再產生
 
 ---
 

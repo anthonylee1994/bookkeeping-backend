@@ -6,6 +6,7 @@ class User < ApplicationRecord
   has_many :merchants, dependent: :destroy
   has_many :transactions, dependent: :destroy
   has_many :idempotency_keys, dependent: :destroy
+  has_many :recurring_rules, dependent: :destroy
 
   before_validation :normalize_username
 

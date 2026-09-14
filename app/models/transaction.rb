@@ -6,6 +6,7 @@ class Transaction < ApplicationRecord
   belongs_to :refund_of, class_name: "Transaction", optional: true
   belongs_to :transfer_account, class_name: "Account", optional: true
   has_many :refunds, class_name: "Transaction", foreign_key: :refund_of_id, dependent: :destroy
+  has_one :recurring_occurrence, dependent: :nullify
 
   enum :kind, { income: 0, expense: 1, transfer: 2 }
   enum :source, { manual: 0, recurring: 1, ai: 2, import: 3 }

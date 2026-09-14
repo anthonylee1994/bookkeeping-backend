@@ -2,6 +2,7 @@ module Api
   module V1
     class AuthController < ApplicationController
       skip_before_action :authenticate_user!
+      skip_before_action :catch_up_recurring
 
       def register
         user = User.new(auth_params)

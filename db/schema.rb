@@ -10,7 +10,7 @@
 #
 # It's strongly recommended that you check this file into your version control system.
 
-ActiveRecord::Schema[8.1].define(version: 2026_09_14_140000) do
+ActiveRecord::Schema[8.1].define(version: 2026_09_14_150000) do
   create_table "accounts", id: { type: :string, limit: 36 }, force: :cascade do |t|
     t.string "color"
     t.datetime "created_at", null: false
@@ -63,6 +63,45 @@ ActiveRecord::Schema[8.1].define(version: 2026_09_14_140000) do
     t.index ["user_id"], name: "index_merchants_on_user_id"
   end
 
+  create_table "recurring_occurrences", id: { type: :string, limit: 36 }, force: :cascade do |t|
+    t.datetime "created_at", null: false
+    t.date "occurred_on", null: false
+    t.string "recurring_rule_id", limit: 36, null: false
+    t.string "transaction_id", limit: 36
+    t.datetime "updated_at", null: false
+    t.index ["recurring_rule_id", "occurred_on"], name: "idx_recurring_occurrences_unique", unique: true
+    t.index ["recurring_rule_id"], name: "index_recurring_occurrences_on_recurring_rule_id"
+    t.index ["transaction_id"], name: "index_recurring_occurrences_on_transaction_id"
+  end
+
+  create_table "recurring_rules", id: { type: :string, limit: 36 }, force: :cascade do |t|
+    t.string "account_id", limit: 36, null: false
+    t.integer "amount_cents", null: false
+    t.string "category_id", limit: 36
+    t.datetime "created_at", null: false
+    t.string "currency", default: "HKD", null: false
+    t.integer "day_of_month"
+    t.integer "day_of_week"
+    t.date "end_on"
+    t.integer "frequency", null: false
+    t.integer "interval", default: 1, null: false
+    t.integer "kind", null: false
+    t.datetime "last_run_at"
+    t.string "merchant_id", limit: 36
+    t.integer "month_of_year"
+    t.datetime "next_run_at", null: false
+    t.text "note"
+    t.date "start_on", null: false
+    t.integer "status", default: 0, null: false
+    t.datetime "updated_at", null: false
+    t.string "user_id", limit: 36, null: false
+    t.index ["account_id"], name: "index_recurring_rules_on_account_id"
+    t.index ["category_id"], name: "index_recurring_rules_on_category_id"
+    t.index ["merchant_id"], name: "index_recurring_rules_on_merchant_id"
+    t.index ["user_id", "status", "next_run_at"], name: "index_recurring_rules_on_user_id_and_status_and_next_run_at"
+    t.index ["user_id"], name: "index_recurring_rules_on_user_id"
+  end
+
   create_table "transactions", id: { type: :string, limit: 36 }, force: :cascade do |t|
     t.string "account_id", limit: 36, null: false
     t.integer "amount_cents", null: false
@@ -106,6 +145,12 @@ ActiveRecord::Schema[8.1].define(version: 2026_09_14_140000) do
   add_foreign_key "idempotency_keys", "users", on_delete: :cascade
   add_foreign_key "merchants", "categories", column: "default_category_id", on_delete: :nullify
   add_foreign_key "merchants", "users", on_delete: :cascade
+  add_foreign_key "recurring_occurrences", "recurring_rules", on_delete: :cascade
+  add_foreign_key "recurring_occurrences", "transactions", on_delete: :nullify
+  add_foreign_key "recurring_rules", "accounts", on_delete: :restrict
+  add_foreign_key "recurring_rules", "categories", on_delete: :nullify
+  add_foreign_key "recurring_rules", "merchants", on_delete: :nullify
+  add_foreign_key "recurring_rules", "users", on_delete: :cascade
   add_foreign_key "transactions", "accounts", column: "transfer_account_id", on_delete: :restrict
   add_foreign_key "transactions", "accounts", on_delete: :restrict
   add_foreign_key "transactions", "categories", on_delete: :nullify

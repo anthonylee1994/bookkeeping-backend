@@ -15,6 +15,14 @@ Rails.application.routes.draw do
           post :duplicate
         end
       end
+      resources :recurring_rules, only: %i[index create update destroy] do
+        member do
+          post :pause
+          post :resume
+          post :run_now
+          post :skip_next
+        end
+      end
     end
   end
 end

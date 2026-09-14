@@ -2,6 +2,7 @@ class ApplicationController < ActionController::API
   wrap_parameters false
 
   before_action :authenticate_user!
+  before_action :catch_up_recurring
 
   rescue_from ActiveRecord::RecordNotFound, with: :render_not_found
   rescue_from ActionController::ParameterMissing, with: :render_parameter_missing
@@ -57,5 +58,9 @@ class ApplicationController < ActionController::API
 
   def render_parameter_missing(error)
     render_error(code: "validation_error", message: I18n.t("api.errors.parameter_missing", parameter: error.param), status: :unprocessable_content)
+  end
+
+  def catch_up_recurring
+    RecurringCatchUp.call(user: current_user) if current_user
   end
 end

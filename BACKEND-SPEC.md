@@ -12,7 +12,7 @@
 
 - 單一貨幣 HKD（DB 保留 currency 欄位，預設 HKD）
 - 每個 user 註冊時自動建立一個「現金」Account
-- 時區固定 `Asia/Hong_Kong`（Rails `config.time_zone`、user 預設、OS `TZ` 一律呢個）
+- 時區固定 `Asia/Hong_Kong`（Rails `config.time_zone`、`ActiveRecord::Base.default_timezone = :local`、user 預設、OS `TZ` 一律呢個；DB 讀寫唔轉 UTC）
 - Weekly = Monday 00:00:00 至 Sunday 23:59:59（Asia/Hong_Kong）
 - Monthly = 1 號 00:00:00 至月末 23:59:59（Asia/Hong_Kong）
 - Recurring 用 **request-time catch-up**，唔用 background job / worker
@@ -39,25 +39,25 @@
 
 ## 1. 技術棧
 
-| 項目              | 選擇                                    |
-| ----------------- | --------------------------------------- |
-| Ruby              | 3.3.x                                   |
-| Rails             | 8.x API-only                            |
-| DB                | SQLite 3（WAL mode, busy_timeout=5000） |
-| Auth              | bcrypt + JWT（`jwt` gem）               |
-| Background        | **冇**。Recurring 用 request-time catch-up；cleanup 用 host cron |
-| Cache             | Solid Cache                             |
-| WebSocket         | 唔用（Solid Cable 唔裝）                |
-| Rate limit        | Rack::Attack                            |
-| 分頁              | Pagy（max_per_page=100）                |
-| 測試              | RSpec + FactoryBot + WebMock + VCR      |
-| API Docs          | rswag                                   |
-| N+1 檢測          | Bullet（dev/test）                      |
-| 刪除              | hard delete（唔用 discard）             |
-| HTTP Client       | Faraday + faraday-retry                 |
-| Circuit Breaker   | stoplight                               |
-| ENV               | dotenv（dev）+ Dokku config（prod）     |
-| 部署              | Dokku（Dockerfile）                     |
+| 項目            | 選擇                                                             |
+| --------------- | ---------------------------------------------------------------- |
+| Ruby            | 3.3.x                                                            |
+| Rails           | 8.x API-only                                                     |
+| DB              | SQLite 3（WAL mode, busy_timeout=5000）                          |
+| Auth            | bcrypt + JWT（`jwt` gem）                                        |
+| Background      | **冇**。Recurring 用 request-time catch-up；cleanup 用 host cron |
+| Cache           | Solid Cache                                                      |
+| WebSocket       | 唔用（Solid Cable 唔裝）                                         |
+| Rate limit      | Rack::Attack                                                     |
+| 分頁            | Pagy（max_per_page=100）                                         |
+| 測試            | RSpec + FactoryBot + WebMock + VCR                               |
+| API Docs        | rswag                                                            |
+| N+1 檢測        | Bullet（dev/test）                                               |
+| 刪除            | hard delete（唔用 discard）                                      |
+| HTTP Client     | Faraday + faraday-retry                                          |
+| Circuit Breaker | stoplight                                                        |
+| ENV             | dotenv（dev）+ Dokku config（prod）                              |
+| 部署            | Dokku（Dockerfile）                                              |
 
 ---
 
@@ -215,51 +215,51 @@
 
 ### 3.1 Auth
 
-| Method | Path             | 說明                               |
-| ------ | ---------------- | ---------------------------------- |
-| POST   | `/auth/register` | username + password                |
-| POST   | `/auth/login`    | username + password → JWT          |
-| GET    | `/me`            | 當前 user                          |
+| Method | Path             | 說明                      |
+| ------ | ---------------- | ------------------------- |
+| POST   | `/auth/register` | username + password       |
+| POST   | `/auth/login`    | username + password → JWT |
+| GET    | `/me`            | 當前 user                 |
 
 > **Logout**：backend **冇** `/auth/logout`、**冇** `/sessions`。Frontend 刪本地 JWT 就算登出。舊 token 仍然有效，直至 rotate `JWT_SECRET`。
 
 ### 3.2 Accounts
 
-| Method | Path            | 說明        |
-| ------ | --------------- | ----------- |
-| GET    | `/accounts`     | list        |
-| POST   | `/accounts`     | create      |
-| PATCH  | `/accounts/:id` | update      |
+| Method | Path            | 說明                                                         |
+| ------ | --------------- | ------------------------------------------------------------ |
+| GET    | `/accounts`     | list                                                         |
+| POST   | `/accounts`     | create                                                       |
+| PATCH  | `/accounts/:id` | update                                                       |
 | DELETE | `/accounts/:id` | hard delete（有交易 / RecurringRule → 422 `account_in_use`） |
 
 ### 3.3 Categories
 
-| Method | Path                       | 說明                    |
-| ------ | -------------------------- | ----------------------- |
-| GET    | `/categories?kind=expense` | list                    |
-| POST   | `/categories`              | create                  |
-| PATCH  | `/categories/:id`          | update                  |
+| Method | Path                       | 說明                                       |
+| ------ | -------------------------- | ------------------------------------------ |
+| GET    | `/categories?kind=expense` | list                                       |
+| POST   | `/categories`              | create                                     |
+| PATCH  | `/categories/:id`          | update                                     |
 | DELETE | `/categories/:id`          | hard delete（交易 `category_id` SET NULL） |
 
 ### 3.4 Merchants
 
-| Method | Path                     | 說明         |
-| ------ | ------------------------ | ------------ |
-| GET    | `/merchants?q=starbucks` | autocomplete |
-| POST   | `/merchants`             | create       |
+| Method | Path                     | 說明                                       |
+| ------ | ------------------------ | ------------------------------------------ |
+| GET    | `/merchants?q=starbucks` | autocomplete                               |
+| POST   | `/merchants`             | create                                     |
 | DELETE | `/merchants/:id`         | hard delete（交易 `merchant_id` SET NULL） |
 
 ### 3.5 Transactions
 
-| Method | Path                          | 說明                                                                                                                                                                    |
-| ------ | ----------------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| Method | Path                          | 說明                                                                                                                                                 |
+| ------ | ----------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------- |
 | GET    | `/transactions`               | filter: `from, to, kind, category_id, account_id, merchant_id, q, min_amount, max_amount`；sort: `occurred_at, amount_cents, created_at`；pagination |
-| POST   | `/transactions`               | create（支援 `Idempotency-Key`、可選 `image_urls`）                                                                                                 |
-| GET    | `/transactions/:id`           | show                                                                                                                                               |
-| PATCH  | `/transactions/:id`           | update                                                                                                                                             |
-| DELETE | `/transactions/:id`           | hard delete                                                                                                                                        |
-| POST   | `/transactions/:id/refund`    | 建立關聯退款（全額或部分）                                                                                                                                              |
-| POST   | `/transactions/:id/duplicate` | 複製一筆                                                                                                                                                                |
+| POST   | `/transactions`               | create（支援 `Idempotency-Key`、可選 `image_urls`）                                                                                                  |
+| GET    | `/transactions/:id`           | show                                                                                                                                                 |
+| PATCH  | `/transactions/:id`           | update                                                                                                                                               |
+| DELETE | `/transactions/:id`           | hard delete                                                                                                                                          |
+| POST   | `/transactions/:id/refund`    | 建立關聯退款（全額或部分）                                                                                                                           |
+| POST   | `/transactions/:id/duplicate` | 複製一筆                                                                                                                                             |
 
 **Refund request**：
 
@@ -276,23 +276,23 @@ POST /api/v1/transactions/123/refund
 
 ### 3.6 Recurring Rules
 
-| Method | Path                             | 說明         |
-| ------ | -------------------------------- | ------------ |
-| GET    | `/recurring_rules`               | list         |
-| POST   | `/recurring_rules`               | create       |
-| PATCH  | `/recurring_rules/:id`           | update       |
+| Method | Path                             | 說明                          |
+| ------ | -------------------------------- | ----------------------------- |
+| GET    | `/recurring_rules`               | list                          |
+| POST   | `/recurring_rules`               | create                        |
+| PATCH  | `/recurring_rules/:id`           | update                        |
 | DELETE | `/recurring_rules/:id`           | hard delete（已產生交易保留） |
-| POST   | `/recurring_rules/:id/pause`     | 暫停         |
-| POST   | `/recurring_rules/:id/resume`    | 恢復         |
-| POST   | `/recurring_rules/:id/run_now`   | 手動觸發一次 |
-| POST   | `/recurring_rules/:id/skip_next` | 跳過下一次   |
+| POST   | `/recurring_rules/:id/pause`     | 暫停                          |
+| POST   | `/recurring_rules/:id/resume`    | 恢復                          |
+| POST   | `/recurring_rules/:id/run_now`   | 手動觸發一次                  |
+| POST   | `/recurring_rules/:id/skip_next` | 跳過下一次                    |
 
 ### 3.7 Receipts / AI
 
-| Method | Path               | 說明                                                     |
-| ------ | ------------------ | -------------------------------------------------------- |
-| POST   | `/receipts/upload` | 上傳圖片 → LIHKG → 回 `{ url, sha256 }`（**唔**寫 Attachment） |
-| POST   | `/ai/parse`        | 傳 `image_url` → DeepSeek `deepseek-flash` → preview          |
+| Method | Path               | 說明                                                               |
+| ------ | ------------------ | ------------------------------------------------------------------ |
+| POST   | `/receipts/upload` | 上傳圖片 → LIHKG → 回 `{ url, sha256 }`（**唔**寫 Attachment）     |
+| POST   | `/ai/parse`        | 傳 `image_url` → DeepSeek `deepseek-flash` → preview               |
 | POST   | `/ai/confirm`      | 用戶確認 → 建立 transaction（寫入 `image_urls`），關聯 AiImportLog |
 
 > **注意**：`/ai/parse` 只接受 whitelist host 嘅 URL（預設 `img.eservice-hk.net`），防 SSRF。唔用 Attachment model。
@@ -346,7 +346,7 @@ POST /api/v1/transactions/123/refund
 ## 4. 業務規則
 
 1. **金額**：integer cents，永遠正數；方向由 `kind` 決定
-2. **時區**：全 app `Asia/Hong_Kong`。DB 仍然存 UTC（`ActiveRecord::Base.default_timezone = :utc`）；顯示同計算（summary、recurring catch-up、日/週/月邊界）一律用 `Time.zone`（Hong Kong）
+2. **時區**：全 app `Asia/Hong_Kong`。`config.time_zone = "Asia/Hong_Kong"`；`ActiveRecord::Base.default_timezone = :local`（Rails 只接受 `:utc` / `:local`，靠 OS `TZ=Asia/Hong_Kong` 令 local = Hong Kong）。DB 讀寫 **唔轉 UTC**。顯示同計算（summary、recurring catch-up、日/週/月邊界）一律用 `Time.zone`（Hong Kong）
 3. **Weekly**：Asia/Hong_Kong Mon 00:00:00 至 Sun 23:59:59.999999
 4. **Monthly**：Asia/Hong_Kong 1 號 00:00:00 至月末 23:59:59.999999
 5. **Transfer**：唔計入 income/expense summary；獨立 `transfers` key
@@ -422,7 +422,7 @@ POST /api/v1/transactions/123/refund
 - [ ] **唔裝**：`discard`、Solid Queue、Solid Cable
 - [ ] `config/application.rb`：
   - `config.time_zone = "Asia/Hong_Kong"`
-  - `config.active_record.default_timezone = :utc`
+  - `config.active_record.default_timezone = :local`
   - `config.middleware.insert_after ActionDispatch::RequestId, ActionDispatch::RequestId`
 - [ ] `config/initializers/cors.rb`：origin 由 `ENV["CORS_ORIGINS"].split(",")` 讀
 - [ ] `config/initializers/rack_attack.rb`：login 5/min/IP、AI 10/min/user、upload 20/min/user
@@ -771,7 +771,7 @@ net_cents      = income_cents - net_expense
 - [ ] monthly 9 月 = 9/1 - 9/30
 - [ ] transfer 唔計入 income/expense，喺 `transfers` key
 - [ ] 退款正確扣減 net_expense
-- [ ] 日界用 Asia/Hong_Kong：UTC 15:59:59 仍算當日，UTC 16:00:00 算第二日
+- [ ] 日界用 Asia/Hong_Kong：`2026-09-14 23:59:59 +08:00` 算 9/14，`2026-09-15 00:00:00 +08:00` 算 9/15
 
 ---
 

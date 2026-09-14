@@ -823,15 +823,15 @@ net_cents      = income_cents - net_expense
 
 **任務**
 
-- [ ] RSpec：model / request / service spec
-- [ ] FactoryBot factories
-- [ ] WebMock + VCR mock DeepSeek 同 LIHKG
-- [ ] `rswag` 產生 OpenAPI，掛 `/api-docs`
-- [ ] Bullet 開喺 dev/test
-- [ ] Seed：admin user、預設分類、範例交易
-- [ ] `Lograge` + JSON log + `request_id`
-- [ ] `dokku checks:enable` + `/up`
-- [ ] SQLite backup script（**修正版**）：
+- [x] RSpec：model / request / service spec
+- [x] FactoryBot factories
+- [x] WebMock + VCR mock DeepSeek 同 LIHKG
+- [x] `rswag` 產生 OpenAPI，掛 `/api-docs`
+- [x] Bullet 開喺 dev/test
+- [x] Seed：admin user、預設分類、範例交易
+- [x] `Lograge` + JSON log + `request_id`
+- [x] `dokku checks:enable` + `/up`
+- [x] SQLite backup script（**修正版**）：
 
 ```bash
 # scripts/backup.sh
@@ -844,22 +844,22 @@ dokku run bookkeeping-backend sh -c '
 '
 ```
 
-- [ ] `lib/tasks/maintenance.rake`：`rails maintenance:cleanup`
+- [x] `lib/tasks/maintenance.rake`：`rails maintenance:cleanup`
   - IdempotencyKey `created_at < 24.hours.ago`
-- [ ] Host cron 每日跑 backup + maintenance（**唔使 worker**）：
+- [x] Host cron 每日跑 backup + maintenance（**唔使 worker**）：
 
 ```
 0 3 * * * dokku run bookkeeping-backend bin/rails maintenance:cleanup
 0 4 * * * /path/to/scripts/backup.sh
 ```
 
-- [ ] `dokku ps:scale bookkeeping-backend web=1`
+- [x] `dokku ps:scale bookkeeping-backend web=1`
 
 **驗收**
 
-- [ ] `bundle exec rspec` 全綠
-- [ ] Coverage > 80%
-- [ ] OpenAPI 喺 `/api-docs` 睇到
+- [x] `bundle exec rspec` 全綠
+- [x] Coverage > 80%
+- [x] OpenAPI 喺 `/api-docs` 睇到
 - [ ] `dokku logs bookkeeping-backend -t` 見到 structured log + request_id
 - [ ] Backup script 跑完見到 2 個 db backup
 - [ ] `dokku ps:report bookkeeping-backend` 只有 web process

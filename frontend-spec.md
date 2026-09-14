@@ -2,7 +2,7 @@
 
 ## 0. 文件目的
 
-本文件定義記帳 App frontend 第一版（MVP）嘅產品範圍、資訊架構、互動、API 整合、PWA 行為、responsive 規則同驗收標準。Frontend 以現有 Rails API 實際行為為準；backend 詳情見 `backend-spec.md` 同 `/api-docs`。
+本文件定義記帳 App frontend 第一版（MVP）嘅產品範圍、資訊架構、互動、PWA 行為、responsive 規則同驗收標準。呢個版本係 pure frontend prototype，資料由本地 repository／mock fixtures 提供，唔依賴 Rails API。
 
 ### 0.1 產品目標
 
@@ -17,8 +17,8 @@
 
 - 多用戶共享帳簿、家庭帳戶或權限管理
 - 多貨幣換算；UI 只支援 HKD
-- Server-side logout、refresh token、忘記密碼
-- 完整離線記帳或背景同步
+- 真實帳戶驗證、跨裝置同步、忘記密碼
+- 背景同步或雲端 backup
 - Push notification
 - CSV／銀行月結單匯入
 
@@ -26,9 +26,9 @@
 
 - 顯示語言為繁體中文（香港），預留 i18n 結構但 MVP 不提供語言切換
 - 時區固定為 `Asia/Hong_Kong`
-- 金額由 API 以 integer cents 傳送；frontend 不使用浮點數做金額運算
+- 金額以 integer cents 儲存；frontend 不使用浮點數做金額運算
 - 日期格式顯示為 `YYYY年M月D日`，時間使用 24 小時制
-- Backend base URL 由 `VITE_API_BASE_URL` 提供，例如 `http://localhost:3000/api/v1`
+- 所有資料操作經 typed local repository 完成
 
 ---
 
@@ -42,14 +42,14 @@
 | UI                    | React + TypeScript（strict mode）    |
 | Styling               | Tailwind CSS                         |
 | Routing               | React Router                         |
-| Server state          | TanStack Query                       |
-| Client state          | Zustand                              |
+| App state              | Zustand                              |
+| Local persistence      | `localStorage`／`sessionStorage`    |
 | Form                  | React Hook Form + Zod                |
 | PWA                   | `vite-plugin-pwa`（Workbox）         |
 | Icons                 | Lucide React                         |
 | Charts                | Recharts                             |
 | Date                  | date-fns                             |
-| Unit / component test | Vitest + React Testing Library + MSW |
+| Unit / component test | Vitest + React Testing Library        |
 | E2E                   | Playwright                           |
 
 Required frontend dependency:
@@ -58,7 +58,7 @@ Required frontend dependency:
 npm install zustand
 ```
 
-Use Zustand's `create` API with `persist` only for the explicitly listed session/draft slices. Do not add a second state library or use Zustand as an API cache.
+Use Zustand's `create` function with `persist` for the explicitly listed local slices. Do not add a remote data cache.
 
 ### 1.2 Coding conventions
 
@@ -71,9 +71,9 @@ Use Zustand's `create` API with `persist` only for the explicitly listed session
 - 非 component／hook function 使用 function declaration
 - 如建立新 project，入口 component 檔名為 `app.tsx`，並使用 `export const App`
 - `.less` 不在本專案使用；如將來需要引入，import 必須放於所有 import 最後
-- 不使用 `any`；API response、form input、query params 全部有明確型別
+- 不使用 `any`；fixture、form input、local query params 全部有明確型別
 - 金額轉換集中於 `lib/money.ts`，日期／時區轉換集中於 `lib/date.ts`
-- Server state 同 client state 要分開處理：API data 用 TanStack Query，跨 component／session 嘅 client state 用 Zustand，唔可以將同一份 server data 長期 duplicated 入兩邊
+- 所有 app data 同 UI state 都由 Zustand／local repository 管理；唔引入 remote data cache
 
 ### 1.3 建議目錄
 
@@ -95,8 +95,9 @@ src/
     accounts/
     categories/
     merchants/
-  api/
-    client.ts
+  data/
+    fixtures.ts
+    repository.ts
     types.ts
   stores/
     auth-store.ts
@@ -109,7 +110,7 @@ src/
   test/
 ```
 
-Feature 內可再分 `components/`、`hooks/`、`api.ts`、`schema.ts` 同 `types.ts`。共用 UI 只放真正跨 feature 重用嘅 primitive，避免過早抽象。
+Feature 內可再分 `components/`、`hooks/`、`repository.ts`、`schema.ts` 同 `types.ts`。共用 UI 只放真正跨 feature 重用嘅 primitive，避免過早抽象。
 
 ---
 
@@ -212,15 +213,15 @@ Tailwind breakpoint 採用預設值，但 layout 以內容需要而非指定裝�
 
 ### 5.1 登入／註冊
 
-欄位：username、password；註冊頁另有確認密碼（只供 frontend 驗證，不送 API）。
+欄位：username、password；註冊頁另有確認密碼，全部只作本地驗證。
 
 - Username 必填，trim 後送出
 - Password 必填；註冊最少 8 字元
 - Password field 有顯示／隱藏切換
 - Submit 中 disable 重複提交，顯示 inline progress
 - 登入失敗顯示一般化錯誤，不透露 username 是否存在
-- 成功後儲存 token、寫入 user state、redirect `returnTo` 或 `/`
-- 登出只會清除本地 token、query cache 同敏感 UI state，再去 `/login`
+- 成功後儲存本地 session、寫入 user state、redirect `returnTo` 或 `/`
+- 登出清除本地 session 同敏感 UI state，再去 `/login`
 
 ### 5.2 Dashboard `/`
 
@@ -249,7 +250,7 @@ Tailwind breakpoint 採用預設值，但 layout 以內容需要而非指定裝�
 - 日期由／至
 - 類型：全部、收入、支出、轉帳
 - 帳戶、分類、商戶
-- 關鍵字（backend 只搜尋 note 同 payment method）
+- 關鍵字搜尋 note、payment method、merchant name
 - 最低／最高金額
 - 排序：日期、金額、建立時間；升序／降序
 - Pagination，每頁預設 25，desktop 可選 25／50／100
@@ -261,7 +262,7 @@ Tailwind breakpoint 採用預設值，但 layout 以內容需要而非指定裝�
 - Desktop 顯示 table：日期、商戶／備註、分類、帳戶、類型、金額、actions
 - Refund transaction 顯示「退款」標記；原交易顯示 `net_amount_cents`
 - 頁碼改變時保留 filter，並 scroll 到列表頂
-- Loading 使用固定尺寸 skeleton；重新 fetch 時保留舊資料，避免 layout jump
+- Loading 使用固定尺寸 skeleton，避免 layout jump
 - No result state 提供清除 filter
 
 ### 5.4 新增／修改交易
@@ -282,8 +283,7 @@ Tailwind breakpoint 採用預設值，但 layout 以內容需要而非指定裝�
 
 - Merchant autocomplete debounce 300ms；輸入新名稱時可建立 merchant，再選回表單
 - 選擇有 default category 嘅 merchant，可自動建議分類，但不可無提示覆蓋用戶已選值
-- Create 每次開表單產生 UUID 作 `Idempotency-Key`；同一次 retry 必須沿用，成功或放棄後才丟棄
-- 成功後更新／invalidate transactions、dashboard、summaries、accounts 相關 query
+- Create 每次開表單產生 UUID；寫入 local repository 後同步更新相關 view
 - Edit 不可改變 `source`，亦不可直接建立 `refund_of_id`
 - 離線時 disable submit，保留尚未送出嘅 form state，提示連線恢復後手動提交
 - 離開 dirty form 前顯示確認
@@ -297,22 +297,22 @@ Actions：修改、複製、退款、刪除。
 - 轉帳不可退款
 - 可退款上限為原交易金額減已退款總額
 - 全數退回後 disable 退款 action
-- 複製成功後打開新交易詳情；backend 會將日期設為現在
+- 複製成功後打開新交易詳情；複製記錄日期預設為現在
 - 刪除確認要指出關聯 refund 亦會被刪除；成功返回列表
 - 單據圖可放大查看，失效時顯示 fallback，不重試無限次
 
 ### 5.6 AI 單據 `/scan`
 
-流程：`選圖／拍攝 -> 上載 -> AI 解析 -> 人工覆核 -> 確認入帳`。
+流程：`選圖／拍攝 -> 本地解析 mock -> 人工覆核 -> 確認入帳`。
 
 1. 使用 `<input type="file" accept="image/jpeg,image/png,image/webp" capture="environment">`
 2. Frontend 驗證類型同 10 MiB 上限，顯示本地 preview
-3. `POST /receipts/upload` multipart 上載，顯示可取消嘅 progress UI（取消只取消 client request）
-4. 取得 `url` 後呼叫 `POST /ai/parse`
+3. 將圖片存入本地 workflow，顯示可取消嘅 progress UI
+4. 使用 deterministic fixture 產生 AI parse preview
 5. 將 `parsed` 結果填入可修改表單；confidence 低或缺失欄位要明顯標示需要覆核
-6. 用戶補回 account／category／merchant，再用 `POST /ai/confirm` 入帳
+6. 用戶補回 account／category／merchant，再由 local repository 入帳
 
-確認時送 `ai_import_log_id`、修正後交易欄位同 `image_urls`，並使用 idempotency key。AI 失敗時保留圖片，提供重試解析或轉為手動入帳；502 不可當作 validation error。
+確認時儲存修正後交易欄位同 `image_urls`，並使用本地 UUID 防止重複提交。AI mock 失敗時保留圖片，提供重試解析或轉為手動入帳。
 
 ### 5.7 報表 `/summaries`
 
@@ -352,7 +352,7 @@ Actions：pause、resume、run now、skip next、edit、delete。
 
 - List 顯示名稱、類型、icon、color、初始餘額、幣別
 - Create／edit：name、kind、icon、color、initial balance；currency 固定 HKD
-- 刪除收到 422 `account_in_use` 時，解釋帳戶仍被交易或定期交易使用
+- 刪除時如帳戶仍被交易或定期交易使用，顯示清晰阻止原因
 
 #### 分類
 
@@ -364,26 +364,20 @@ Actions：pause、resume、run now、skip next、edit、delete。
 #### 商戶
 
 - 可搜尋／建立／刪除，顯示 default category 同使用次數
-- Backend 沒有 merchant update endpoint，所以 MVP 不提供修改
+- MVP 暫不提供商戶修改
 - 刪除前提示歷史交易會保留，但商戶會被清空
 
 ---
 
-## 6. API 整合
+## 6. 本地資料與狀態
 
-### 6.1 Client 規則
+### 6.1 Local repository 規則
 
-- Base path：`${VITE_API_BASE_URL}`，endpoint 再加 `/dashboard` 等
-- JSON request 帶 `Content-Type: application/json`
-- Private request 帶 `Authorization: Bearer <token>`
-- 解析成功格式 `{ data: T }` 或 paginated `{ data: T[], meta: PaginationMeta }`
-- 每個 request 設合理 timeout；AI parse／upload 可用較長 timeout
-- `401`：只執行一次集中 logout，清 cache 後 redirect login
-- `404`：detail page 顯示不存在並提供返回入口
-- `422`：優先將 `details` 對應落欄位，其餘顯示 form-level error
-- `429`：顯示稍後再試；如有 `Retry-After` 則顯示等待時間
-- `500/502/503`：顯示可重試錯誤，同時保留 backend `request_id` 供支援查詢
-- Query 自動 retry：GET 網絡錯誤最多 2 次；4xx 不 retry；mutation 不自動 retry
+- 所有 domain data 由 `data/repository.ts` 管理，初始資料來自 typed fixtures
+- CRUD、搜尋、排序、分頁、summary 同 recurring 計算喺 browser 內完成
+- repository functions 必須係純同步、可測試；唔可以直接依賴 React component
+- local persistence 使用 `localStorage`；session／draft 使用 `sessionStorage`
+- 讀取或寫入失敗時顯示本地錯誤狀態，唔模擬 remote HTTP status
 
 ### 6.2 Core TypeScript types
 
@@ -401,15 +395,6 @@ export type AccountKind =
 export type RecurringFrequency = "daily" | "weekly" | "monthly" | "yearly";
 export type RecurringStatus = "active" | "paused" | "ended";
 
-export interface ApiError {
-  error: {
-    code: string;
-    message: string;
-    details?: Record<string, string[]>;
-    request_id: string;
-  };
-}
-
 export interface PaginationMeta {
   page: number;
   per_page: number;
@@ -418,33 +403,28 @@ export interface PaginationMeta {
 }
 ```
 
-完整 domain type 應由 OpenAPI 生成或以 `swagger/v1/swagger.yaml` 為起點補齊。現有 OpenAPI response schema 未完整前，不應將 codegen 當唯一 validation；開發時仍要用 MSW contract fixtures 覆蓋真實 response。
+完整 domain type 應由 `data/types.ts` 定義；fixtures 必須通過同一套 schema validation，確保 UI 測試資料同 production shape 一致。
 
-### 6.3 Query keys
+### 6.3 Local selectors
 
 ```text
-['me']
-['dashboard', date]
-['transactions', normalizedFilters]
-['transaction', id]
-['accounts']
-['categories', kind]
-['merchants', query]
-['summaries', period, date, page]
-['recurring-rules']
+useAppStore((state) => state.transactions)
+useAppStore((state) => state.accounts)
+useAppStore((state) => state.categories)
+useAppStore((state) => state.recurringRules)
 ```
 
-Mutation 成功後只 invalidate 受影響 keys；唔可以每次清空全部 cache。
+Selector 只讀取需要嘅 slice；資料寫入後由 store action 更新單一 source of truth，唔建立 duplicated cache。
 
 ### 6.4 Zustand state management
 
-Zustand 只管理 frontend client state；唔取代 TanStack Query、React Hook Form 或 URL state。
+Zustand 管理全部 frontend app state；React Hook Form 管理表單暫態，URL 管理可分享 filter state。
 
 #### State ownership
 
 | State 類型                | Owner                      | 例子                                                                                                       |
 | ------------------------- | -------------------------- | ---------------------------------------------------------------------------------------------------------- |
-| Backend／server state     | TanStack Query             | transactions、dashboard、accounts、categories、summaries、recurring rules、loading／error／pagination data |
+| Local domain state        | `appStore`                 | transactions、dashboard、accounts、categories、summaries、recurring rules、loading／error／pagination data |
 | URL state                 | React Router search params | transaction filters、sort、page、summary period/date、returnTo                                             |
 | Form state                | React Hook Form            | transaction／account／category／recurring rule／AI confirm 欄位、dirty／validation state                   |
 | Session state             | `authStore`                | token、minimal user payload、hydrated、logout                                                              |
@@ -482,56 +462,44 @@ type DraftState = {
 };
 ```
 
-實際 type 要放 `api/types.ts` 或 feature type file，以上只係 ownership contract；不得用 `any` 或自由格式 object。
+實際 type 要放 `data/types.ts` 或 feature type file，以上只係 ownership contract；不得用 `any` 或自由格式 object。
 
 #### Rules
 
 - 使用 Zustand selectors 讀取最小片段，例如 `useAuthStore((state) => state.token)`；避免 component 直接訂閱整個 store。
-- Store action 用同步、可測試嘅 state transition；API request、retry、invalidate query 由 feature hook／TanStack Query mutation 處理，不將 fetch 寫入 generic store。
-- `authStore` 用 `persist` middleware 存 `token` 同最少 user metadata 到 `localStorage`，並設定 version／migration。密碼、API response、交易列表、單據原圖絕不 persist。
-- App 啟動先 hydrate `authStore`，再由 route guard 決定是否呼叫 `GET /me`；hydration 完成前不可 redirect，避免 login page 閃現。
+- Store action 用同步、可測試嘅 state transition；所有 repository operation 由 feature hook 呼叫，唔將 component-specific logic 寫入 generic store。
+- `authStore` 用 `persist` middleware 存本地 user session 到 `localStorage`，並設定 version／migration。密碼同單據原圖絕不 persist。
+- App 啟動先 hydrate local stores，再由 route guard 決定是否顯示 login；hydration 完成前不可 redirect，避免 login page 閃現。
 - `uiStore` 不需要持久化；`isOffline` 由 `navigator.onLine` 同 `online`／`offline` events 更新。
 - `draftStore` 只 persist 可序列化 draft 欄位到 `sessionStorage`（例如 `transactionDraft`、AI step、URL）；`File`、Blob、object URL 不可 persist，離開頁面或 reload 要清理無效 preview。
 - AI preview 入帳成功、交易提交成功、登出或切換 session 後，必須呼叫 `resetDrafts()`；object URL 要另外 `URL.revokeObjectURL()`。
-- Logout／401 流程要原子地 `authStore.clearSession()`、`draftStore.resetDrafts()`、清 TanStack Query cache，再導向 `/login`。
+- Logout 流程要原子地 `authStore.clearSession()`、`draftStore.resetDrafts()`，再導向 `/login`。
 - 不可將 filters、pagination、selected date 同時放 Zustand 又放 URL；URL 是可分享頁面 state 嘅唯一 source of truth。
 - Store state 要保持可序列化，方便 devtools、測試同跨 tab 行為；禁止將 React element、Promise、AbortController 放入 store。
-- 需要跨 tab 登出時監聽 `storage` event；收到 token 清除後，其他 tab 同步清 query cache 同回到 login。
+- 需要跨 tab 登出時監聽 `storage` event；收到 session 清除後，其他 tab 同步清 local stores 同回到 login。
 
 #### Testing
 
 - 每個 store 有獨立 Vitest 測試，覆蓋 initial state、action、reset、persist hydration／migration 同 logout cleanup。
 - Component test 要驗證 selector 只因相關 slice 改變而 rerender；不得靠 implementation detail 直接改 store 內部 object。
 
-### 6.5 Backend endpoint matrix
+### 6.5 Local repository contract
 
-| Feature           | Endpoint                                                            |
-| ----------------- | ------------------------------------------------------------------- | ------ | -------- |
-| Auth              | `POST /auth/register`, `POST /auth/login`, `GET /me`                |
-| Dashboard         | `GET /dashboard?date=YYYY-MM-DD`                                    |
-| Transactions      | `GET/POST /transactions`, `GET/PATCH/DELETE /transactions/:id`      |
-| Refund／duplicate | `POST /transactions/:id/refund`, `POST /transactions/:id/duplicate` |
-| Accounts          | `GET/POST /accounts`, `PATCH/DELETE /accounts/:id`                  |
-| Categories        | `GET/POST /categories`, `PATCH/DELETE /categories/:id`              |
-| Merchants         | `GET/POST /merchants`, `DELETE /merchants/:id`                      |
-| Receipt／AI       | `POST /receipts/upload`, `POST /ai/parse`, `POST /ai/confirm`       |
-| Summaries         | `GET /summaries/daily                                               | weekly | monthly` |
-| Recurring         | `GET/POST /recurring_rules`、update/delete/actions                  |
+Repository 必須提供 typed functions，覆蓋 auth、dashboard、transactions、accounts、categories、merchants、receipts、AI preview、summaries 同 recurring rules。每個 function 只更新 local store／persistence，唔發出 network request。
 
-Health endpoints 位於 backend root，唔屬於 `/api/v1`：`GET /up`（liveness）、`GET /health`（整體）、`GET /health/db`、`GET /health/deepseek`、`GET /health/lihkg`。Frontend 一般毋須 polling health endpoint。
+Prototype 可用 deterministic fixtures 起步；使用者新增、修改、刪除嘅資料要即時反映喺所有相關 view，reload 後由 local persistence 還原。
 
 ---
 
 ## 7. Auth 與安全
 
-- Backend 只支援 bearer JWT，沒有 HttpOnly cookie／refresh／revoke；MVP token 存放 `localStorage`
-- 所有可插入 UI 嘅 backend/user text 經 React escaping；不使用 `dangerouslySetInnerHTML`
-- Content Security Policy 至少限制 `default-src 'self'`，並按 API、圖片 host 同 dev server 需要開放 `connect-src`／`img-src`
+- Prototype auth 只係本地 session gate，唔係真正身份驗證，唔可聲稱具備 production security
+- 所有可插入 UI 嘅 fixture/user text 經 React escaping；不使用 `dangerouslySetInnerHTML`
+- Content Security Policy 至少限制 `default-src 'self'`，並按圖片 host 同 dev server 需要開放 `img-src`
 - Production 只使用 HTTPS；service worker 只於 production 或 localhost 啟用
-- 登出、401、切換 account session 時清除 Zustand auth／draft state、TanStack Query cache、AI preview、draft 同圖片 object URL
-- 不在 console、analytics、error tracking 記錄 JWT、密碼、完整單據圖 URL 或完整 API body
-- `returnTo`、external image URL 同 API error message 不可直接變成 executable URL／HTML
-- 因 JWT 無 expiry 同 server revoke，UI 設定頁要清楚提供登出；此限制要列入 release risk
+- 登出或切換本地 session 時清除 Zustand auth／draft state、AI preview、draft 同圖片 object URL
+- 不在 console、analytics、error tracking 記錄密碼、完整單據圖 URL 或完整 local data snapshot
+- `returnTo`、external image URL 同 local error message 不可直接變成 executable URL／HTML
 
 ---
 
@@ -552,9 +520,8 @@ Health endpoints 位於 backend root，唔屬於 `/api/v1`：`GET /up`（livenes
 
 - Precache hashed JS、CSS、fonts、icons 同 offline fallback shell
 - Navigation 採 Network First，有短 timeout，失敗先回 app shell
-- Authenticated `/api/**` 一律不寫入 Cache Storage
-- Receipt upload、AI、所有 mutation 使用 Network Only
-- External receipt images不 precache；browser 自然 cache 已足夠
+- Local domain data 唔寫入 Cache Storage；只可經指定 browser storage persistence
+- Receipt fixture images 不 precache；browser 自然 cache 已足夠
 - 新版本採 prompt update：顯示「有新版本」toast，由用戶按「重新載入」套用
 - 不可在用戶填緊表單時自動 reload
 
@@ -562,10 +529,9 @@ Health endpoints 位於 backend root，唔屬於 `/api/v1`：`GET /up`（livenes
 
 - 全局顯示低干擾 offline banner
 - 已載入且仍在 memory 嘅資料可繼續查看，標示「資料可能未更新」
-- Reload 後無網絡顯示 offline shell、重試按鈕同最後連線狀態；不偽裝有 server data
-- Create、edit、delete、refund、duplicate、AI、recurring actions 全部 disable
-- Draft form 可存於 session storage，但不背景自動提交；恢復網絡後由用戶確認再送
-- 使用 `online` event 只觸發 query refetch，唔自動重播 mutation
+- Reload 後無網絡仍可由 local persistence 還原資料；需要外部圖片或 AI mock asset 時顯示 unavailable fallback
+- Create、edit、delete、refund、duplicate 同 recurring actions 離線照常運作
+- Draft form 可存於 session storage；唔需要 background sync
 
 ### 8.4 Install UX
 
@@ -578,11 +544,11 @@ Health endpoints 位於 backend root，唔屬於 `/api/v1`：`GET /up`（livenes
 ## 9. Loading、Empty、Error 與 Feedback
 
 - 首次 page load：用與最終 layout 同尺寸 skeleton
-- Button mutation：按鈕內 progress，disable 同一 action；頁面其餘安全操作可繼續
+- 寫入操作：按鈕內 progress，disable 同一 action；頁面其餘安全操作可繼續
 - 成功 create/update/delete：toast 簡短確認，重要結果同時反映於頁面
 - Validation：欄位下方錯誤 + form summary；focus 第一個錯誤欄位
 - Empty state 要分「完全冇資料」同「filter 無結果」
-- 全頁 fatal error 提供 retry、返回首頁，同顯示 request ID（如有）
+- 全頁 fatal error 提供重設本地資料、返回首頁等復原入口
 - 使用 Error Boundary 隔離 route-level render error
 - Toast 使用 `aria-live="polite"`；阻塞錯誤使用 `role="alert"`
 
@@ -609,8 +575,8 @@ Health endpoints 位於 backend root，唔屬於 `/api/v1`：`GET /up`（livenes
 
 - Route-level code splitting；Recharts、AI scan 等較重 feature lazy load
 - 首頁 critical bundle gzip 目標 `< 200 KiB`（不含 lazy chunks）
-- 避免將所有 transaction 拉入 client；跟 server pagination
-- Merchant search debounce 300ms，並取消過期 request
+- 大量 transaction 使用 client-side pagination／virtualization，避免一次 render 全部資料
+- Merchant search debounce 300ms，避免每次 keypress 重算大型列表
 - 圖片 preview 使用 object URL，unmount 後 revoke；不上載前不轉 base64
 - 圖片顯示用 `loading="lazy"`、固定 aspect ratio，避免 layout shift
 - Web Vitals 目標：LCP < 2.5s、INP < 200ms、CLS < 0.1（75th percentile）
@@ -623,21 +589,21 @@ Health endpoints 位於 backend root，唔屬於 `/api/v1`：`GET /up`（livenes
 
 - Dollar string ↔ cents conversion：正常、0、負數、千位、小數位、超大值
 - 香港日期／日週月 boundary formatting
-- API error normalization
+- Local repository error normalization
 - URL filter serialize／parse
 - Recurring frequency label 同 payload mapping
 
 ### 12.2 Component / integration
 
-- Auth redirect、401 logout、returnTo validation
+- Local session redirect、logout、returnTo validation
 - Zustand stores 嘅 hydration、selector、persist／migration、跨 tab logout cleanup
 - Transaction form 三種 kind 嘅欄位切換同 validation
-- Idempotency key 喺 retry 沿用，成功後更新
+- Local UUID 唯一性同重複提交保護
 - Filter、sort、pagination 與 URL 同步
 - Refund 上限、轉帳不可退款、delete confirmation
 - AI upload／parse／edit／confirm，以及每段失敗重試
-- Offline 時 mutations disabled，online 後不自動提交
-- Backend field errors 正確落到 form input
+- Offline 時 local CRUD 照常運作
+- Repository validation errors 正確落到 form input
 
 ### 12.3 E2E critical paths
 
@@ -663,14 +629,12 @@ Health endpoints 位於 backend root，唔屬於 `/api/v1`：`GET /up`（livenes
 ## 13. 環境與部署
 
 ```dotenv
-VITE_API_BASE_URL=http://localhost:3000/api/v1
 VITE_APP_ENV=development
 ```
 
 - `.env.example` 只放公開設定；所有 `VITE_*` 都視為可公開，不可放 secret
-- Local frontend origin 預設 `http://localhost:5173`，backend `CORS_ORIGINS` 必須包含佢
 - Production build 必須有 SPA fallback，未知 route 回 `index.html`
-- 部署時 frontend origin、API URL、CSP `connect-src` 同 backend CORS 要一致
+- 部署時 frontend origin、asset URL 同 CSP 要一致
 - CI 次序：typecheck -> lint -> unit/integration -> build -> Playwright smoke
 - Production source map 如上傳 error tracker，唔應公開提供
 
@@ -683,26 +647,20 @@ VITE_APP_ENV=development
 - 實作本 spec 所列正常、loading、empty、error、offline 狀態
 - Mobile、tablet、desktop layout 經實機或 Playwright screenshot 驗證
 - Keyboard、screen reader labels、focus management、對比符合要求
-- API request／response 有 TypeScript type，同 backend 現況一致
-- Mutation 有防重複提交；建立交易同 AI confirm 有 idempotency key
+- Local domain data、repository input／output 全部有 TypeScript type
+- 寫入操作有防重複提交；建立交易同 AI confirm 產生唯一 UUID
 - Relevant unit／integration test 完成，critical flow E2E 通過
 - `npm run build`、typecheck、lint、test 全部通過
 - 無 console error、React warning、水平 overflow 或 UI overlap
-- PWA 可安裝、更新提示正常、offline fallback 正常，API response 無落 Cache Storage
+- PWA 可安裝、更新提示正常，offline 可還原 local data
 
 ---
 
-## 15. Backend 現況限制／開發前要留意
+## 15. Pure frontend 限制／開發前要留意
 
-以下係 frontend 必須按現況處理嘅限制：
-
-1. 冇 logout、refresh token、password reset；JWT 亦冇 expiry 或單 token revoke。
-2. Merchant 只可以 create／list／delete，冇 update。
-3. Transaction 關鍵字 `q` 只搜尋 note 同 payment method，不搜尋 merchant name。
-4. API 不提供 transaction duplicate warning，UI 不應聲稱有自動重複偵測。
-5. `POST /ai/confirm` 實際需要 `ai_import_log_id`（亦兼容 `import_log_id`），現有 OpenAPI request schema未完整表達。
-6. `POST /transactions/:id/refund` 成功 status 為 200，response 除 `data` 外另有頂層 `net_amount_cents`。
-7. Health endpoints 位於 backend root 而非 `/api/v1`；整體及 dependency health check 失敗時會回 `503`，frontend 不應將 `503` 當成成功 response。
-8. 圖片由外部圖床提供，可能失效；UI 必須有 broken image fallback。
-9. 每個 authenticated request 都可能觸發 recurring catch-up 寫入交易；mutation 後應 refetch 有關列表同 dashboard。
-10. Hard delete 不可復原，frontend 不應提供虛假 undo。
+1. 本地 auth 只供 prototype route gating，唔提供真正安全邊界。
+2. `localStorage` 容量有限，單據圖片只保留 object URL／fixture URL，唔將大型 base64 persist。
+3. AI 辨識使用 deterministic mock result，唔聲稱係真實 OCR／AI output。
+4. 資料只存在當前 browser profile，清除 site data 會失去所有變更。
+5. 跨裝置同步、多人協作、server backup 同 recovery 不在 MVP 範圍。
+6. Hard delete 不可復原，frontend 不應提供虛假 undo。

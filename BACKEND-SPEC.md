@@ -18,7 +18,8 @@
 - Recurring 用 **request-time catch-up**，唔用 background job / worker
 - Recurring backfill **預設關閉**；可選開啟，上限 90 日
 - 刪除一律 **hard delete**（唔用 soft delete / `discarded_at`）
-- JWT 唔 check exp **只限 dev/demo**；production 必須 `JWT_CHECK_EXP=true`
+- JWT **所有 env 都唔 check exp**；token 唔寫 `exp`；**冇 UserSession**；logout 只係 frontend 刪 JWT
+- Auth **只用 username + password**，唔用 email
 - LIHKG 上傳 API 係**非官方**圖床（eservice-hk），唔保證穩定
 - DeepSeek `deepseek-flash` **原生支援 vision**，無需 OCR fallback
 - Dokku 用 Dockerfile buildpack（Rails 8 預設）
@@ -64,8 +65,9 @@
 
 ### 2.1 User
 
-- `username` string, null: false, unique index（case-insensitive）
+- `username` string, null: false, unique index（case-insensitive）；存 lowercase
 - `password_digest` string, null: false
+- **冇** `email` 欄位
 - `timezone` string, default: "Asia/Hong_Kong"
 - `currency` string, default: "HKD"
 - timestamps
@@ -75,6 +77,8 @@
 - `user_id` FK, null: false, index
 - `name` string, null: false
 - `kind` enum：`cash / bank / credit_card / e_wallet / other`
+- `icon` string, nullable
+- `color` string, nullable
 - `initial_balance_cents` integer, default: 0
 - `currency` string, default: "HKD"
 - unique index `(user_id, name)`
@@ -118,7 +122,7 @@
 - `occurred_at` datetime, null: false, index
 - `note` text
 - `payment_method` string, nullable
-- `receipt_url` string, nullable
+- `image_urls` json, default: `[]`（字串 array，記 LIHKG 等圖床 URL）
 - `source` enum：`manual / recurring / ai / import`
 - `refund_of_id` FK self, nullable（`on_delete: :cascade`：刪原交易一齊刪退款）
 - `transfer_account_id` FK（kind=transfer 時用，`on_delete: :restrict`）
@@ -131,6 +135,7 @@
 - income/expense：`transfer_account_id` 必須 nil
 - transfer：`category_id` 必須 nil，`transfer_account_id` 必須存在且 != account_id
 - `amount_cents > 0`
+- `image_urls` 必須係 string array（可空）
 
 ### 2.6 RecurringRule
 
@@ -171,25 +176,10 @@
 
 > 刪咗由 recurring 產生嘅 transaction 之後，occurrence 保留、`transaction_id = nil`，catch-up **唔會**再為該日產生交易。
 
-### 2.8 Attachment
+### 2.8 AiImportLog
 
 - `user_id` FK, null: false, index
-- `transaction_id` FK, nullable, index（`on_delete: :nullify`）
-- `source_url` string（LIHKG 回傳 URL）
-- `storage_key` string, nullable（未來換 S3 用）
-- `content_type` string
-- `byte_size` integer
-- `sha256` string, index
-- timestamps
-
-**刪除**：hard delete。`transaction_id` `on_delete: :nullify`。
-
-> **簡化**：移除 polymorphic，Attachment 直接屬於 user + 可選 transaction
-
-### 2.9 AiImportLog
-
-- `user_id` FK, null: false, index
-- `attachment_id` FK, nullable（`on_delete: :nullify`）
+- `image_urls` json, default: `[]`
 - `image_sha256` string, index
 - `provider` string, default: "deepseek"
 - `model` string, default: "deepseek-flash"
@@ -206,7 +196,7 @@
 
 **去重**：`(user_id, image_sha256)` 查最近一筆，若 24 小時內 `status = success` 就回傳 cache。
 
-### 2.10 IdempotencyKey（獨立表）
+### 2.9 IdempotencyKey（獨立表）
 
 - `user_id` FK, null: false
 - `key` string, null: false
@@ -227,12 +217,11 @@
 
 | Method | Path             | 說明                               |
 | ------ | ---------------- | ---------------------------------- |
-| POST   | `/auth/register` | email + username + password        |
-| POST   | `/auth/login`    | email 或 username + password → JWT |
-| DELETE | `/auth/logout`   | revoke 當前 session                |
+| POST   | `/auth/register` | username + password                |
+| POST   | `/auth/login`    | username + password → JWT          |
 | GET    | `/me`            | 當前 user                          |
-| GET    | `/sessions`      | 列出所有 active sessions           |
-| DELETE | `/sessions/:id`  | revoke 指定 session                |
+
+> **Logout**：backend **冇** `/auth/logout`、**冇** `/sessions`。Frontend 刪本地 JWT 就算登出。舊 token 仍然有效，直至 rotate `JWT_SECRET`。
 
 ### 3.2 Accounts
 
@@ -265,7 +254,7 @@
 | Method | Path                          | 說明                                                                                                                                                                    |
 | ------ | ----------------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
 | GET    | `/transactions`               | filter: `from, to, kind, category_id, account_id, merchant_id, q, min_amount, max_amount`；sort: `occurred_at, amount_cents, created_at`；pagination |
-| POST   | `/transactions`               | create（支援 `Idempotency-Key`）                                                                                                                   |
+| POST   | `/transactions`               | create（支援 `Idempotency-Key`、可選 `image_urls`）                                                                                                 |
 | GET    | `/transactions/:id`           | show                                                                                                                                               |
 | PATCH  | `/transactions/:id`           | update                                                                                                                                             |
 | DELETE | `/transactions/:id`           | hard delete                                                                                                                                        |
@@ -302,11 +291,11 @@ POST /api/v1/transactions/123/refund
 
 | Method | Path               | 說明                                                     |
 | ------ | ------------------ | -------------------------------------------------------- |
-| POST   | `/receipts/upload` | 上傳圖片 → LIHKG → 回 URL                                |
-| POST   | `/ai/parse`        | 傳 `attachment_id` → DeepSeek `deepseek-flash` → preview |
-| POST   | `/ai/confirm`      | 用戶確認 → 建立 transaction，關聯 AiImportLog            |
+| POST   | `/receipts/upload` | 上傳圖片 → LIHKG → 回 `{ url, sha256 }`（**唔**寫 Attachment） |
+| POST   | `/ai/parse`        | 傳 `image_url` → DeepSeek `deepseek-flash` → preview          |
+| POST   | `/ai/confirm`      | 用戶確認 → 建立 transaction（寫入 `image_urls`），關聯 AiImportLog |
 
-> **注意**：`/ai/parse` **只接受 `attachment_id`**，唔接受任意 URL（防 SSRF）。
+> **注意**：`/ai/parse` 只接受 whitelist host 嘅 URL（預設 `img.eservice-hk.net`），防 SSRF。唔用 Attachment model。
 
 ### 3.8 Dashboard
 
@@ -381,10 +370,11 @@ POST /api/v1/transactions/123/refund
 10. **刪除商家**：hard delete；交易 `merchant_id` SET NULL
 11. **刪除 RecurringRule**：hard delete；已產生 transaction 保留；occurrences cascade delete
 12. **AI 解析流程**：
-    - 上傳 → sha256 → 查 AiImportLog 24 小時內成功記錄 → 有就回 cache
-    - 冇就：backend fetch LIHKG 圖 → base64 inline → DeepSeek `deepseek-flash` vision
+    - 上傳 → LIHKG → 回 URL + sha256（唔落 DB）
+    - parse：whitelist host → sha256 查 AiImportLog 24 小時內成功記錄 → 有就回 cache
+    - 冇就：backend fetch 圖 → base64 inline → DeepSeek `deepseek-flash` vision
     - 回傳 preview JSON（唔直接入帳）
-    - 用戶 confirm → 建立 transaction + AiImportLog.transaction_id
+    - 用戶 confirm → 建立 transaction（`image_urls` + `source = ai`）+ AiImportLog.transaction_id
 13. **AI JSON schema**（用 JSON Schema 驗證）：
 
 ```json
@@ -413,7 +403,7 @@ POST /api/v1/transactions/123/refund
       - `net_expense = expense_cents - refund_cents`
       - `net_cents = income_cents - net_expense`
     - `by_category` 各自顯示 `expense_cents` 同 `refund_cents`
-17. **SSRF 防護**：`/ai/parse` 只收 `attachment_id`，backend 自己 fetch LIHKG URL；若將來要收 URL，必須 whitelist domain
+17. **SSRF 防護**：`/ai/parse` 只收 whitelist host 嘅 `image_url`（`ENV["LIHKG_ALLOWED_HOSTS"]`，預設 `img.eservice-hk.net`）；backend 自己 fetch。非 whitelist → 400
 18. **LIHKG 圖床風險**：用 stoplight circuit breaker，連續失敗 5 次開路 60 秒；失敗時回 502，log 詳細
 19. **Pagy 上限**：`Pagy::DEFAULT[:max_per_page] = 100`
 
@@ -484,10 +474,9 @@ dokku config:set bookkeeping-backend \
   RAILS_MASTER_KEY=... \
   SECRET_KEY_BASE=... \
   JWT_SECRET=... \
-  JWT_CHECK_EXP=true \
-  JWT_TTL_DAYS=7 \
   CORS_ORIGINS=https://app.on99.app \
   LIHKG_UPLOAD_URL=https://img.eservice-hk.net/api.php?version=2 \
+  LIHKG_ALLOWED_HOSTS=img.eservice-hk.net \
   DEEPSEEK_API_KEY=... \
   DEEPSEEK_MODEL=deepseek-flash \
   DEEPSEEK_VISION_ENABLED=true \
@@ -508,30 +497,25 @@ dokku ps:scale bookkeeping-backend web=1
 
 ---
 
-### Phase 1：User / Auth / JWT / UserSession
+### Phase 1：User / Auth / JWT
 
-**目標**：註冊、登入、JWT 簽發驗證、多裝置 session 管理、logout revoke。
+**目標**：註冊、登入、JWT 簽發驗證。冇 session 表、冇 server-side logout。
 
 **任務**
 
-- [ ] Migration：User（2.1）、UserSession（2.2）
-- [ ] `User` model：`has_secure_password`、email/username 正規化、password 最少 8 字
-- [ ] `UserSession` model：belongs_to user，scope `active`
+- [ ] Migration：User（2.1）
+- [ ] `User` model：`has_secure_password`、username 轉 lowercase、password 最少 8 字、**冇 email**
 - [ ] `JsonWebToken` service：
-  - `encode(payload, jti)`：用 `JWT_SECRET`；若 `JWT_CHECK_EXP=true` 加 `exp = JWT_TTL_DAYS.days.from_now`
-  - `decode(token)`：`JWT.decode(token, secret, verify: JWT_CHECK_EXP)`
+  - `encode(user_id)`：用 `JWT_SECRET`；payload 含 `user_id` / `iat`，**唔寫 `exp`、唔寫 `jti`**
+  - `decode(token)`：`JWT.decode(token, secret, true, { verify_expiration: false, algorithm: "HS256" })`
 - [ ] `ApplicationController`：
   - `authenticate_user!` before_action
   - 解析 `Authorization: Bearer <token>`
-  - 查 `UserSession.find_by(jti:, revoked_at: nil)`
-  - 更新 `last_seen_at`
+  - decode 後 `User.find(payload["user_id"])`；user 唔存在 → 401
   - `catch_up_recurring` before_action 喺 Phase 4 先加
-- [ ] `AuthController`：register / login / logout
-- [ ] login：建立 UserSession（jti + device_info + ip）
-- [ ] logout：`current_session.update!(revoked_at: Time.current)`
-- [ ] `SessionsController`：index / destroy（俾用戶睇同踢走其他裝置）
+- [ ] `AuthController`：register / login（**冇 logout**）
+- [ ] login：簽發 JWT，**唔**寫任何 session row
 - [ ] Rate limit login（Rack::Attack）
-- [ ] UserSession cleanup **唔用 job**：交俾 Phase 7 host cron `rails maintenance:cleanup`（`expires_at < now` 或 `revoked_at < 30.days.ago`）
 
 **API 範例**
 
@@ -539,14 +523,14 @@ dokku ps:scale bookkeeping-backend web=1
 POST /api/v1/auth/login
 Content-Type: application/json
 
-{ "login": "alice@example.com", "password": "secret123" }
+{ "username": "alice", "password": "secret123" }
 ```
 
 ```json
 {
   "data": {
     "token": "eyJ...",
-    "user": { "id": 1, "email": "alice@example.com", "username": "alice" }
+    "user": { "id": 1, "username": "alice" }
   }
 }
 ```
@@ -555,10 +539,11 @@ Content-Type: application/json
 
 - [ ] 錯誤密碼回 401 + `{ "error": { "code": "invalid_credentials" } }`
 - [ ] 無 token 打 `/me` 回 401
-- [ ] logout 後同一 token 打 `/me` 回 401
-- [ ] 兩個裝置 login，兩邊都 work
-- [ ] 裝置 A logout 唔影響裝置 B
-- [ ] `GET /sessions` 見到兩條 session
+- [ ] 壞 token / 亂簽 token 打 `/me` 回 401
+- [ ] 兩個裝置用同一 token 都 work
+- [ ] **冇** `DELETE /auth/logout`、**冇** `/sessions`（回 404）
+- [ ] register / login **唔收** email；`User` **冇** email 欄位
+- [ ] `Alice` 同 `alice` 視為同一個 username（lowercase）
 
 ---
 
@@ -566,7 +551,7 @@ Content-Type: application/json
 
 **任務**
 
-- [ ] Migrations（2.3 / 2.4 / 2.5）
+- [ ] Migrations（2.2 / 2.3 / 2.4）
 - [ ] User 註冊後 callback 建立：
   - 「現金」Account（kind=cash）
   - 預設分類：
@@ -592,7 +577,7 @@ Content-Type: application/json
 
 **任務**
 
-- [ ] Migration（2.6）、IdempotencyKey（2.11）
+- [ ] Migration：Transaction（2.5）、IdempotencyKey（2.9）
 - [ ] `Transaction` model：enum kind、validation、scope、`by_user`
 - [ ] `TransactionsController`：index（filter + sort + pagy）、create、show、update、destroy（hard delete；關聯 refund `dependent: :destroy`）
 - [ ] Idempotency middleware / concern：
@@ -639,7 +624,7 @@ Content-Type: application/json
 
 **任務**
 
-- [ ] Migration（2.7 / 2.8）
+- [ ] Migration（2.6 / 2.7）
 - [ ] `RecurringRule` model：validation、`next_run_at` 計算、hard delete
 - [ ] `RecurringRuleCalculator` service：
   - `next_occurrence(from:, rule:)` 支援 daily/weekly/monthly/yearly + interval
@@ -673,11 +658,11 @@ Content-Type: application/json
 
 ---
 
-### Phase 5：Attachment / LIHKG Upload / DeepSeek Vision
+### Phase 5：LIHKG Upload / DeepSeek Vision（冇 Attachment）
 
 **任務**
 
-- [ ] Migration（2.9 / 2.10）
+- [ ] Migration：AiImportLog（2.8）
 - [ ] `LihkgUploadService`：
   - endpoint 由 `ENV["LIHKG_UPLOAD_URL"]` 讀
   - multipart form，field name `file`
@@ -686,7 +671,7 @@ Content-Type: application/json
   - timeout 10s
   - **Stoplight circuit breaker**：連續失敗 5 次開路 60 秒
   - 失敗回 502 + structured log
-- [ ] `ReceiptsController#upload`：收圖 → sha256 → 存 Attachment → 呼叫 LIHKG → 回 URL
+- [ ] `ReceiptsController#upload`：收圖 → sha256 → 呼叫 LIHKG → 回 `{ url, sha256 }`（**唔落 DB**）
 - [ ] `DeepSeekService`：
   - `parse(image_base64:)` → 用 `deepseek-flash` vision
   - Request body：
@@ -708,42 +693,44 @@ Content-Type: application/json
     }
     ```
   - 用 JSON Schema 驗證回傳
-  - Log tokens / latency / raw_response 到 AiImportLog
+  - Log tokens / latency / raw_response 到 AiImportLog（連 `image_urls`）
 - [ ] `AiController#parse`：
-  - **只接受 `attachment_id`**
-  - 先查 `(user_id, image_sha256)` 24 小時 cache
-  - 否則：backend fetch LIHKG 圖 → base64 → DeepSeek `deepseek-flash`
+  - 接受 `{ "image_url": "https://..." }`
+  - Host 必須喺 `LIHKG_ALLOWED_HOSTS`（預設 `img.eservice-hk.net`），否則 400
+  - 先 fetch 圖計 sha256，查 `(user_id, image_sha256)` 24 小時 cache
+  - 否則：base64 → DeepSeek `deepseek-flash`
   - 回 preview JSON（唔入帳）
   - HTTP status：
     - `success` → 200
     - `partial` → 200（confidence 低）
     - `failed` → 502
 - [ ] `AiController#confirm`：
-  - 用戶確認 → 建 Transaction → 關聯 AiImportLog
+  - 用戶確認 → 建 Transaction（`image_urls` = 確認嘅 URL array，`source = ai`）→ 關聯 AiImportLog
   - 支援 `Idempotency-Key`
 
 **Pipeline**
 
 ```
-upload → LIHKG URL → Attachment (sha256)
-       → cache check (24h)
+upload → LIHKG URL（只回 client，唔寫 Attachment）
+       → parse(image_url) whitelist host
+       → cache check (24h, sha256)
        → backend fetch image
        → base64 inline
        → DeepSeek `deepseek-flash` vision
        → JSON Schema validate
        → return preview
-       → user confirm → Transaction
+       → user confirm → Transaction.image_urls
 ```
 
 **驗收**
 
-- [ ] 上傳 jpg 回 URL
+- [ ] 上傳 jpg 回 `{ url, sha256 }`，DB **冇** Attachment 表 / row
 - [ ] 上傳 .exe 回 422
-- [ ] 同一張圖 24 小時內上傳兩次，第二次直接回 cache，唔再打 DeepSeek
+- [ ] 同一張圖 24 小時內 parse 兩次，第二次直接回 cache，唔再打 DeepSeek
 - [ ] DeepSeek 回唔合法 JSON → status = partial，回 raw + error
-- [ ] confirm 後 transaction.source = ai
+- [ ] confirm 後 `transaction.source = ai` 且 `image_urls` 有嗰條 URL
 - [ ] LIHKG 連續失敗 5 次後，第 6 次直接回 502（circuit open）
-- [ ] `/ai/parse` 傳 `image_url` 回 400（唔接受）
+- [ ] `/ai/parse` 傳非 whitelist host（例如 `http://127.0.0.1/`）回 400
 
 ---
 
@@ -815,7 +802,6 @@ dokku run bookkeeping-backend sh -c '
 
 - [ ] `lib/tasks/maintenance.rake`：`rails maintenance:cleanup`
   - IdempotencyKey `created_at < 24.hours.ago`
-  - UserSession `expires_at < now` 或 `revoked_at < 30.days.ago`
 - [ ] Host cron 每日跑 backup + maintenance（**唔使 worker**）：
 
 ```
@@ -851,14 +837,13 @@ CACHE_DATABASE_URL=sqlite3:///app/storage/production_cache.sqlite3
 
 # Auth
 JWT_SECRET=...
-JWT_CHECK_EXP=true
-JWT_TTL_DAYS=7
 
 # CORS
 CORS_ORIGINS=https://app.on99.app,https://admin.on99.app
 
 # 上傳
 LIHKG_UPLOAD_URL=https://img.eservice-hk.net/api.php?version=2
+LIHKG_ALLOWED_HOSTS=img.eservice-hk.net
 MAX_UPLOAD_BYTES=10485760
 LIHKG_CIRCUIT_FAILURES=5
 LIHKG_CIRCUIT_COOLDOWN=60
@@ -937,7 +922,7 @@ Pagy 預設回 `page, items, count, pages`，要自己 map 做上面格式。
 1. **DeepSeek vision 已 GA**：`deepseek-flash` 原生支援 image input，三種傳入方式（base64 / URL / file_id）。單張圖最多 384 tokens，定價同文字模型相同。舊名 `deepseek-v4-flash-vision-exp` 仍兼容但已路由到 `deepseek-flash`。
 2. **LIHKG API 非官方**：`img.eservice-hk.net` 唔係 LIHKG 官方 API，冇 SLA、冇文檔、可能隨時改。已加 stoplight circuit breaker，但要有 fallback 圖床（S3 / R2）嘅 plan。
 3. **SQLite 併發**：而家得 web process 寫，風險細過 web+worker；WAL + busy_timeout 仍然要。Catch-up 喺 read request 寫入，單 user 可接受；高負載要轉 Postgres。
-4. **JWT 唔 check exp**：production 必須 `JWT_CHECK_EXP=true`；若真係要 false，要加 IP whitelist。
+4. **JWT 永久有效**：唔寫、唔驗證 `exp`；冇 UserSession，server **唔能** revoke 單張 token。Logout = frontend 刪本地 JWT。遺失 token 要 rotate `JWT_SECRET` 先全部作廢。
 5. **Dokku storage 單點**：冇 replication，靠 backup。
 6. **多貨幣**：而家只 HKD，將來加外幣要 exchange rate service。
 7. **Transfer 報表**：spec 只定義 summary 有 `transfers` key，詳細報表將來再補。

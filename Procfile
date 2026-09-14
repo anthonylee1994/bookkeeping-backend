@@ -1,2 +1,2 @@
 web: bundle exec puma -C config/puma.rb
-release: bundle exec rails db:prepare && bundle exec rails db:migrate
+release: bash -lc "bundle exec rails db:prepare && bundle exec rails db:migrate"

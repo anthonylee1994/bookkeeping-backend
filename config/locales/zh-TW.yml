@@ -7,6 +7,7 @@ zh-TW:
       username_taken: "使用者名稱已被使用"
       invalid_credentials: "使用者名稱或密碼不正確"
       rate_limited: "請求過於頻繁，請稍後再試"
+      account_in_use: "帳戶已有交易或週期性規則，無法刪除"
   activerecord:
     attributes:
       user:
@@ -16,6 +17,18 @@ zh-TW:
         password_challenge: "目前密碼"
         timezone: "時區"
         currency: "貨幣"
+      account:
+        name: "帳戶名稱"
+        kind: "帳戶類型"
+        initial_balance_cents: "初始餘額"
+        currency: "貨幣"
+      category:
+        name: "分類名稱"
+        kind: "分類類型"
+        position: "排序"
+      merchant:
+        name: "商家名稱"
+        default_category: "預設分類"
   errors:
     format: "%{attribute}%{message}"
     messages:

@@ -24,6 +24,7 @@
 - DeepSeek `deepseek-flash` **原生支援 vision**，無需 OCR fallback
 - Dokku 用 Dockerfile buildpack（Rails 8 預設）
 - Dokku 上 SQLite 檔案用 persistent storage mount
+- 所有 model PK / FK 用 **UUID**（SQLite 存 `varchar(36)`，API 一律 UUID string）
 
 ### 0.3 Dokku 部署總覽
 
@@ -63,8 +64,24 @@
 
 ## 2. 資料模型
 
+### 2.0 ID 約定
+
+所有 model 用 **UUID v4** 做 primary key，**唔用** integer autoincrement：
+
+- SQLite 冇 native UUID type：欄位用 `varchar(36)` 存 canonical UUID（`8-4-4-4-12` lowercase，例如 `550e8400-e29b-41d4-a716-446655440000`）
+- `config/initializers/sqlite_uuid.rb` 將 `:uuid` map 做 `varchar(36)`，令 `create_table ..., id: :uuid` 同 `t.references ..., type: :uuid` 行得通
+- `config.generators`：`g.orm :active_record, primary_key_type: :uuid`
+- `ApplicationRecord`：
+  - `before_create`：`self.id ||= SecureRandom.uuid`（SQLite 冇 `gen_random_uuid()`）
+  - `self.implicit_order_column = "created_at"`（UUID v4 唔按插入順序，`Model.first` / `.last` 唔可以靠 `id`）
+- 所有 FK（`t.references` / `t.belongs_to`）一律 `type: :uuid`
+- API JSON 同 path param 嘅 `id` / `*_id` 全部係 UUID string
+- JWT payload `user_id` 都係 UUID string
+- `schema.rb` dump 可能寫 `id: :string, limit: 36`（SQLite 冇 uuid SQL type）；migration 一律寫 `id: :uuid`
+
 ### 2.1 User
 
+- `id` uuid PK
 - `username` string, null: false, unique index（case-insensitive）；存 lowercase
 - `password_digest` string, null: false
 - **冇** `email` 欄位
@@ -74,7 +91,8 @@
 
 ### 2.2 Account
 
-- `user_id` FK, null: false, index
+- `id` uuid PK
+- `user_id` uuid FK, null: false, index
 - `name` string, null: false
 - `kind` enum：`cash / bank / credit_card / e_wallet / other`
 - `icon` string, nullable
@@ -88,7 +106,8 @@
 
 ### 2.3 Category
 
-- `user_id` FK, null: false, index
+- `id` uuid PK
+- `user_id` uuid FK, null: false, index
 - `name` string, null: false
 - `kind` enum：`income / expense`
 - `icon` string, nullable
@@ -101,9 +120,10 @@
 
 ### 2.4 Merchant
 
-- `user_id` FK, null: false, index
+- `id` uuid PK
+- `user_id` uuid FK, null: false, index
 - `name` string, null: false
-- `default_category_id` FK, nullable, `on_delete: :nullify`
+- `default_category_id` uuid FK, nullable, `on_delete: :nullify`
 - `usage_count` integer, default: 0
 - unique index `(user_id, name)`
 - timestamps
@@ -112,10 +132,11 @@
 
 ### 2.5 Transaction
 
-- `user_id` FK, null: false, index
-- `account_id` FK, null: false, index（`on_delete: :restrict`）
-- `category_id` FK, nullable, index（`on_delete: :nullify`）
-- `merchant_id` FK, nullable, index（`on_delete: :nullify`）
+- `id` uuid PK
+- `user_id` uuid FK, null: false, index
+- `account_id` uuid FK, null: false, index（`on_delete: :restrict`）
+- `category_id` uuid FK, nullable, index（`on_delete: :nullify`）
+- `merchant_id` uuid FK, nullable, index（`on_delete: :nullify`）
 - `kind` enum：`income / expense / transfer`
 - `amount_cents` integer, null: false（永遠正數）
 - `currency` string, default: "HKD"
@@ -124,8 +145,8 @@
 - `payment_method` string, nullable
 - `image_urls` json, default: `[]`（字串 array，記 LIHKG 等圖床 URL）
 - `source` enum：`manual / recurring / ai / import`
-- `refund_of_id` FK self, nullable（`on_delete: :cascade`：刪原交易一齊刪退款）
-- `transfer_account_id` FK（kind=transfer 時用，`on_delete: :restrict`）
+- `refund_of_id` uuid FK self, nullable（`on_delete: :cascade`：刪原交易一齊刪退款）
+- `transfer_account_id` uuid FK（kind=transfer 時用，`on_delete: :restrict`）
 - `idempotency_key` string, nullable（配合 IdempotencyKey table 使用）
 - timestamps
 - Index `(user_id, occurred_at)`, `(user_id, kind, occurred_at)`
@@ -139,10 +160,11 @@
 
 ### 2.6 RecurringRule
 
-- `user_id` FK, null: false, index
-- `account_id` FK, null: false（`on_delete: :restrict`）
-- `category_id` FK, nullable（`on_delete: :nullify`）
-- `merchant_id` FK, nullable（`on_delete: :nullify`）
+- `id` uuid PK
+- `user_id` uuid FK, null: false, index
+- `account_id` uuid FK, null: false（`on_delete: :restrict`）
+- `category_id` uuid FK, nullable（`on_delete: :nullify`）
+- `merchant_id` uuid FK, nullable（`on_delete: :nullify`）
 - `kind` enum：`income / expense`
 - `amount_cents` integer, null: false
 - `currency` string, default: "HKD"
@@ -168,9 +190,10 @@
 
 ### 2.7 RecurringOccurrence（idempotency）
 
-- `recurring_rule_id` FK, null: false（`on_delete: :cascade`）
+- `id` uuid PK
+- `recurring_rule_id` uuid FK, null: false（`on_delete: :cascade`）
 - `occurred_on` date, null: false
-- `transaction_id` FK, nullable（`on_delete: :nullify`）
+- `transaction_id` uuid FK, nullable（`on_delete: :nullify`）
 - unique index `(recurring_rule_id, occurred_on)`
 - timestamps
 
@@ -178,7 +201,8 @@
 
 ### 2.8 AiImportLog
 
-- `user_id` FK, null: false, index
+- `id` uuid PK
+- `user_id` uuid FK, null: false, index
 - `image_urls` json, default: `[]`
 - `image_sha256` string, index
 - `provider` string, default: "deepseek"
@@ -190,7 +214,7 @@
 - `raw_response` text
 - `parsed_json` json
 - `error_message` text
-- `transaction_id` FK, nullable（`on_delete: :nullify`）
+- `transaction_id` uuid FK, nullable（`on_delete: :nullify`）
 - `idempotency_key` string, nullable
 - timestamps
 
@@ -198,7 +222,8 @@
 
 ### 2.9 IdempotencyKey（獨立表）
 
-- `user_id` FK, null: false
+- `id` uuid PK
+- `user_id` uuid FK, null: false
 - `key` string, null: false
 - `request_hash` string（SHA256 of method + path + body）
 - `response_status` integer
@@ -264,7 +289,7 @@
 **Refund request**：
 
 ```json
-POST /api/v1/transactions/123/refund
+POST /api/v1/transactions/550e8400-e29b-41d4-a716-446655440000/refund
 {
   "amount_cents": 5000,        // 可選，預設全額
   "occurred_at": "2026-09-14T10:00:00+08:00",
@@ -272,7 +297,7 @@ POST /api/v1/transactions/123/refund
 }
 ```
 
-**Refund response**：回傳新建立嘅 refund transaction（`refund_of_id = 123`），同時回傳原交易嘅 `net_amount_cents`。
+**Refund response**：回傳新建立嘅 refund transaction（`refund_of_id = "550e8400-e29b-41d4-a716-446655440000"`），同時回傳原交易嘅 `net_amount_cents`。
 
 ### 3.6 Recurring Rules
 
@@ -322,7 +347,7 @@ POST /api/v1/transactions/123/refund
     "refund_cents": 5000,
     "net_cents": 55000,
     "by_category": [
-      { "category_id": 1, "name": "飲食", "expense_cents": 30000, "refund_cents": 1000 }
+      { "category_id": "9b1deb4d-3b7d-4bad-9bdd-2b0d7b3dcb6d", "name": "飲食", "expense_cents": 30000, "refund_cents": 1000 }
     ],
     "by_account": [...],
     "transfers": { "count": 3, "total_cents": 200000 },
@@ -427,6 +452,11 @@ POST /api/v1/transactions/123/refund
 - [ ] `config/initializers/cors.rb`：origin 由 `ENV["CORS_ORIGINS"].split(",")` 讀
 - [ ] `config/initializers/rack_attack.rb`：login 5/min/IP、AI 10/min/user、upload 20/min/user
 - [ ] `config/initializers/pagy.rb`：`Pagy::DEFAULT[:max_per_page] = 100`
+- [ ] `config/initializers/sqlite_uuid.rb`：將 `:uuid` map 做 `varchar(36)`（SQLite 冇 native UUID）
+- [ ] `config.generators`：`g.orm :active_record, primary_key_type: :uuid`
+- [ ] `ApplicationRecord`：
+  - `before_create`：`self.id ||= SecureRandom.uuid`
+  - `self.implicit_order_column = "created_at"`
 - [ ] `config/database.yml`：2 個 DB（primary / cache）全部指向 `storage/`
 - [ ] SQLite WAL：`config/initializers/sqlite_pragma.rb`
 
@@ -474,7 +504,7 @@ dokku config:set bookkeeping-backend \
   RAILS_MASTER_KEY=... \
   SECRET_KEY_BASE=... \
   JWT_SECRET=... \
-  CORS_ORIGINS=https://app.on99.app \
+  CORS_ORIGINS=https://book.on99.app \
   LIHKG_UPLOAD_URL=https://img.eservice-hk.net/api.php?version=2 \
   LIHKG_ALLOWED_HOSTS=img.eservice-hk.net \
   DEEPSEEK_API_KEY=... \
@@ -494,6 +524,8 @@ dokku ps:scale bookkeeping-backend web=1
 - [ ] `/up` 回 200
 - [ ] `dokku storage:list bookkeeping-backend` 見到 mount
 - [ ] `dokku enter bookkeeping-backend web ls -la /app/storage` 見到 primary + cache sqlite 檔
+- [ ] generators `primary_key_type: :uuid`；SQLite `native_database_types[:uuid]` = `varchar(36)`
+- [ ] `create_table ..., id: :uuid` 建出嚟嘅 PK 係 UUID string，唔係 integer
 
 ---
 
@@ -503,10 +535,10 @@ dokku ps:scale bookkeeping-backend web=1
 
 **任務**
 
-- [ ] Migration：User（2.1）
+- [ ] Migration：User（2.1），`create_table :users, id: :uuid`
 - [ ] `User` model：`has_secure_password`、username 轉 lowercase、password 最少 8 字、**冇 email**
 - [ ] `JsonWebToken` service：
-  - `encode(user_id)`：用 `JWT_SECRET`；payload 含 `user_id` / `iat`，**唔寫 `exp`、唔寫 `jti`**
+  - `encode(user_id)`：用 `JWT_SECRET`；payload 含 `user_id`（UUID string）/ `iat`，**唔寫 `exp`、唔寫 `jti`**
   - `decode(token)`：`JWT.decode(token, secret, true, { verify_expiration: false, algorithm: "HS256" })`
 - [ ] `ApplicationController`：
   - `authenticate_user!` before_action
@@ -530,7 +562,10 @@ Content-Type: application/json
 {
   "data": {
     "token": "eyJ...",
-    "user": { "id": 1, "username": "alice" }
+    "user": {
+      "id": "7c9e6679-7425-40de-944b-e07fc1f90ae7",
+      "username": "alice"
+    }
   }
 }
 ```
@@ -544,6 +579,7 @@ Content-Type: application/json
 - [ ] **冇** `DELETE /auth/logout`、**冇** `/sessions`（回 404）
 - [ ] register / login **唔收** email；`User` **冇** email 欄位
 - [ ] `Alice` 同 `alice` 視為同一個 username（lowercase）
+- [ ] register / login 回嘅 `user.id` 係 UUID string（36 chars），唔係 integer
 
 ---
 
@@ -551,7 +587,7 @@ Content-Type: application/json
 
 **任務**
 
-- [ ] Migrations（2.2 / 2.3 / 2.4）
+- [ ] Migrations（2.2 / 2.3 / 2.4）：全部 `id: :uuid`；FK 一律 `type: :uuid`
 - [ ] User 註冊後 callback 建立：
   - 「現金」Account（kind=cash）
   - 預設分類：
@@ -577,7 +613,7 @@ Content-Type: application/json
 
 **任務**
 
-- [ ] Migration：Transaction（2.5）、IdempotencyKey（2.9）
+- [ ] Migration：Transaction（2.5）、IdempotencyKey（2.9）：全部 `id: :uuid`；FK 一律 `type: :uuid`
 - [ ] `Transaction` model：enum kind、validation、scope、`by_user`
 - [ ] `TransactionsController`：index（filter + sort + pagy）、create、show、update、destroy（hard delete；關聯 refund `dependent: :destroy`）
 - [ ] Idempotency middleware / concern：
@@ -599,9 +635,9 @@ Content-Type: application/json
 ```
 ?from=2026-09-01&to=2026-09-30
 &kind=expense
-&category_id=3
-&account_id=1
-&merchant_id=5
+&category_id=9b1deb4d-3b7d-4bad-9bdd-2b0d7b3dcb6d
+&account_id=3fa85f64-5717-4562-b3fc-2c963f66afa6
+&merchant_id=1b9d6bcd-bbfd-4b2d-9b5d-ab8dfbbd4bed
 &q=starbucks
 &min_amount=1000&max_amount=50000
 &sort=-occurred_at
@@ -624,7 +660,7 @@ Content-Type: application/json
 
 **任務**
 
-- [ ] Migration（2.6 / 2.7）
+- [ ] Migration（2.6 / 2.7）：全部 `id: :uuid`；FK 一律 `type: :uuid`
 - [ ] `RecurringRule` model：validation、`next_run_at` 計算、hard delete
 - [ ] `RecurringRuleCalculator` service：
   - `next_occurrence(from:, rule:)` 支援 daily/weekly/monthly/yearly + interval
@@ -662,7 +698,7 @@ Content-Type: application/json
 
 **任務**
 
-- [ ] Migration：AiImportLog（2.8）
+- [ ] Migration：AiImportLog（2.8）：`id: :uuid`；FK 一律 `type: :uuid`
 - [ ] `LihkgUploadService`：
   - endpoint 由 `ENV["LIHKG_UPLOAD_URL"]` 讀
   - multipart form，field name `file`
@@ -839,7 +875,7 @@ CACHE_DATABASE_URL=sqlite3:///app/storage/production_cache.sqlite3
 JWT_SECRET=...
 
 # CORS
-CORS_ORIGINS=https://app.on99.app,https://admin.on99.app
+CORS_ORIGINS=https://book.on99.app
 
 # 上傳
 LIHKG_UPLOAD_URL=https://img.eservice-hk.net/api.php?version=2

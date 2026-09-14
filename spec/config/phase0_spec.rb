@@ -40,6 +40,34 @@ RSpec.describe "Phase 0 configuration" do
     expect(timeout.to_i).to eq(5000)
   end
 
+  it "uses uuid as the default active record primary key type" do
+    expect(Rails.configuration.generators.options[:active_record][:primary_key_type]).to eq(:uuid)
+    expect(ApplicationRecord.implicit_order_column).to eq("created_at")
+
+    uuid_type = ActiveRecord::Base.connection.native_database_types[:uuid]
+    expect(uuid_type[:name]).to eq("varchar")
+    expect(uuid_type[:limit]).to eq(36)
+  end
+
+  it "creates records with uuid v4 primary keys" do
+    conn = ActiveRecord::Base.connection
+    conn.create_table :uuid_probes, id: :uuid, force: true do |t|
+      t.timestamps
+    end
+
+    klass = Class.new(ApplicationRecord) do
+      self.table_name = "uuid_probes"
+    end
+
+    record = klass.create!
+    expect(record.id).to match(
+      /\A[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}\z/i
+    )
+    expect(klass.columns_hash["id"].sql_type).to match(/varchar/i)
+  ensure
+    ActiveRecord::Base.connection.drop_table :uuid_probes, if_exists: true
+  end
+
   def pragma_value(conn, name)
     result = conn.execute("PRAGMA #{name};")
     row = result.first

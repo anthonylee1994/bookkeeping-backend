@@ -358,8 +358,8 @@ POST /api/v1/transactions/123/refund
 
 1. **金額**：integer cents，永遠正數；方向由 `kind` 決定
 2. **時區**：全 app `Asia/Hong_Kong`。DB 仍然存 UTC（`ActiveRecord::Base.default_timezone = :utc`）；顯示同計算（summary、recurring catch-up、日/週/月邊界）一律用 `Time.zone`（Hong Kong）
-3. **Weekly**：Mon 00:00:00 至 Sun 23:59:59.999999
-4. **Monthly**：1 號 00:00:00 至月末 23:59:59.999999
+3. **Weekly**：Asia/Hong_Kong Mon 00:00:00 至 Sun 23:59:59.999999
+4. **Monthly**：Asia/Hong_Kong 1 號 00:00:00 至月末 23:59:59.999999
 5. **Transfer**：唔計入 income/expense summary；獨立 `transfers` key
 6. **Recurring 產生邏輯**（request-time catch-up，**唔用 background job**）：
    - 已 authenticate 嘅 request 開頭呼叫 `RecurringCatchUp.call(user: current_user)`（`Time.use_zone("Asia/Hong_Kong")`）
@@ -784,7 +784,7 @@ net_cents      = income_cents - net_expense
 - [ ] monthly 9 月 = 9/1 - 9/30
 - [ ] transfer 唔計入 income/expense，喺 `transfers` key
 - [ ] 退款正確扣減 net_expense
-- [ ] 跨時區 user 邊界正確
+- [ ] 日界用 Asia/Hong_Kong：UTC 15:59:59 仍算當日，UTC 16:00:00 算第二日
 
 ---
 

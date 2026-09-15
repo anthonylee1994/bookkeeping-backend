@@ -1,13 +1,13 @@
 class User < ApplicationRecord
   has_secure_password
 
-  has_many :accounts, dependent: :destroy
-  has_many :categories, dependent: :destroy
-  has_many :merchants, dependent: :destroy
-  has_many :transactions, dependent: :destroy
-  has_many :idempotency_keys, dependent: :destroy
-  has_many :recurring_rules, dependent: :destroy
-  has_many :ai_import_logs, dependent: :destroy
+  has_many :ai_import_logs, dependent: :delete_all
+  has_many :recurring_rules, dependent: :delete_all
+  has_many :idempotency_keys, dependent: :delete_all
+  has_many :transactions, dependent: :delete_all
+  has_many :merchants, dependent: :delete_all
+  has_many :categories, dependent: :delete_all
+  has_many :accounts, dependent: :delete_all
 
   before_validation :normalize_username
 

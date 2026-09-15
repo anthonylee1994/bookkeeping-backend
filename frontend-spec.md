@@ -356,10 +356,9 @@ Actions：pause、resume、run now、skip next、edit、delete。
 
 #### 分類
 
-- Income／expense tabs；按 `position` 排序
-- Create／edit：name、kind、icon、color、position
+- Income／expense tabs；依後端回傳次序（建立時間）排列
+- Create／edit：name、kind、icon、color
 - 刪除前提示歷史交易會保留，但分類會變成未分類
-- MVP 不做 drag-and-drop；用 position numeric control 調整次序
 
 #### 商戶
 

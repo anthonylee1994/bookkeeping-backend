@@ -10,7 +10,7 @@
 #
 # It's strongly recommended that you check this file into your version control system.
 
-ActiveRecord::Schema[8.1].define(version: 2026_09_15_190000) do
+ActiveRecord::Schema[8.1].define(version: 2026_09_16_120000) do
   create_table "accounts", id: { type: :string, limit: 36 }, force: :cascade do |t|
     t.string "color"
     t.datetime "created_at", null: false
@@ -56,7 +56,6 @@ ActiveRecord::Schema[8.1].define(version: 2026_09_15_190000) do
     t.string "icon"
     t.integer "kind", null: false
     t.string "name", null: false
-    t.integer "position", default: 0, null: false
     t.datetime "updated_at", null: false
     t.string "user_id", limit: 36, null: false
     t.index ["user_id", "kind", "name"], name: "index_categories_on_user_id_and_kind_and_name", unique: true

@@ -55,7 +55,7 @@ module Api
       end
 
       def user_categories
-        current_user.categories.order(:kind, :position, :created_at)
+        current_user.categories.order(:kind, :created_at)
       end
 
       # Cache 只可以重用「同版本 prompt + 同一組分類」嘅結果；改名／加減分類或者改咗

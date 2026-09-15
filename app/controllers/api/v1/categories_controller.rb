@@ -4,7 +4,7 @@ module Api
       def index
         categories = current_user.categories
         categories = categories.where(kind: params[:kind]) if params[:kind].present?
-        categories = categories.order(:kind, :position, :created_at)
+        categories = categories.order(:kind, :created_at)
         render json: { data: categories.map { |category| category_payload(category) } }
       rescue ArgumentError => error
         render_invalid_value(error)
@@ -40,11 +40,11 @@ module Api
       private
 
       def category_params
-        params.permit(:name, :kind, :icon, :color, :position)
+        params.permit(:name, :kind, :icon, :color)
       end
 
       def category_payload(category)
-        category.as_json(only: %i[id name kind icon color position created_at updated_at])
+        category.as_json(only: %i[id name kind icon color created_at updated_at])
       end
 
       def render_invalid_value(error)

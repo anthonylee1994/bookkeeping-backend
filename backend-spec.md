@@ -112,7 +112,6 @@
 - `kind` enum：`income / expense`
 - `icon` string, nullable
 - `color` string, nullable
-- `position` integer, default: 0
 - unique index `(user_id, kind, name)`
 - timestamps
 

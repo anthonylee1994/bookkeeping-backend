@@ -29,7 +29,6 @@ zh-TW:
       category:
         name: "分類名稱"
         kind: "分類類型"
-        position: "排序"
       merchant:
         name: "商家名稱"
         default_category: "預設分類"

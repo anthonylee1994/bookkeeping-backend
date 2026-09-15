@@ -27,7 +27,7 @@ class User < ApplicationRecord
       [ :expense, %w[飲食 交通 娛樂 購物 醫療 住屋 水電 其他支出] ],
       [ :income, %w[薪水 獎金 投資 兼職 其他收入] ]
     ].each do |kind, names|
-      names.each_with_index { |name, index| categories.create!(name: name, kind: kind, position: index) }
+      names.each { |name| categories.create!(name: name, kind: kind) }
     end
   end
 

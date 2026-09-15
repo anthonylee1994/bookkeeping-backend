@@ -5,5 +5,4 @@ class Category < ApplicationRecord
 
   validates :name, presence: true, uniqueness: { scope: [ :user_id, :kind ] }
   validates :kind, presence: true
-  validates :position, numericality: { only_integer: true }
 end

@@ -18,7 +18,7 @@ RSpec.describe "Categories", type: :request do
   end
 
   it "filters, creates, updates, and deletes categories" do
-    post "/api/v1/categories", params: { name: "寵物", kind: "expense", position: 20 }, headers: headers, as: :json
+    post "/api/v1/categories", params: { name: "寵物", kind: "expense" }, headers: headers, as: :json
     expect(response).to have_http_status(:created)
     category_id = json.dig("data", "id")
 

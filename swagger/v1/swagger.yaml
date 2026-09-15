@@ -306,7 +306,6 @@ components:
       properties:
         name: { type: string }
         kind: { type: string, enum: [income, expense] }
-        position: { type: integer }
         icon: { type: string }
         color: { type: string }
     MerchantInput:

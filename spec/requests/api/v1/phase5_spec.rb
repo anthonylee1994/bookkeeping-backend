@@ -56,6 +56,35 @@ RSpec.describe "Phase 5 receipt and AI APIs", type: :request do
     expect(json.dig("data", "parsed", "merchant_name")).to eq("茶餐廳")
   end
 
+  it "matches the AI category hint against the user-defined categories" do
+    food = user.categories.find_by!(name: "飲食", kind: :expense)
+    image = "\xFF\xD8\xFF\xE0receipt".b
+    stub_request(:get, "https://img.eservice-hk.net/receipt-cat.jpg").to_return(status: 200, body: image, headers: { "Content-Type" => "image/jpeg" })
+    parsed = { amount_cents: 1234, kind: "expense", occurred_at: "2026-09-14T10:00:00+08:00", category_hint: "飲食", confidence: 0.9 }
+    deepseek = stub_request(:post, "https://api.deepseek.com/chat/completions")
+      .with { |request| JSON.parse(request.body).dig("messages", 0, "content", 0, "text").include?("- 飲食 (expense)") }
+      .to_return(status: 200, body: { choices: [ { message: { content: parsed.to_json } } ], usage: {} }.to_json)
+
+    post "/api/v1/ai/parse", params: { image_url: "https://img.eservice-hk.net/receipt-cat.jpg" }, headers: headers, as: :json
+
+    expect(response).to have_http_status(:ok)
+    expect(json.dig("data", "suggested_category_id")).to eq(food.id)
+    expect(deepseek).to have_been_requested.once
+  end
+
+  it "does not suggest a category when the hint kind does not match" do
+    user.categories.find_by!(name: "薪水", kind: :income)
+    image = "\xFF\xD8\xFF\xE0receipt".b
+    stub_request(:get, "https://img.eservice-hk.net/receipt-kind.jpg").to_return(status: 200, body: image, headers: { "Content-Type" => "image/jpeg" })
+    parsed = { amount_cents: 1234, kind: "expense", occurred_at: "2026-09-14T10:00:00+08:00", category_hint: "薪水", confidence: 0.9 }
+    stub_request(:post, "https://api.deepseek.com/chat/completions").to_return(status: 200, body: { choices: [ { message: { content: parsed.to_json } } ], usage: {} }.to_json)
+
+    post "/api/v1/ai/parse", params: { image_url: "https://img.eservice-hk.net/receipt-kind.jpg" }, headers: headers, as: :json
+
+    expect(response).to have_http_status(:ok)
+    expect(json.dig("data", "suggested_category_id")).to be_nil
+  end
+
   it "confirms an AI parse into an AI transaction" do
     image_sha = Digest::SHA256.hexdigest("receipt")
     log = user.ai_import_logs.create!(image_urls: [ "https://img.eservice-hk.net/a.jpg" ], image_sha256: image_sha, status: :success, parsed_json: { amount_cents: 500, kind: "expense", occurred_at: Time.zone.now.iso8601 })

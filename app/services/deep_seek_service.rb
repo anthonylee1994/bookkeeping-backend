@@ -13,13 +13,14 @@ class DeepSeekService
     }
   }.freeze
 
-  def self.call(image_base64:, content_type:)
-    new(image_base64:, content_type:).call
+  def self.call(image_base64:, content_type:, categories: [])
+    new(image_base64:, content_type:, categories:).call
   end
 
-  def initialize(image_base64:, content_type:)
+  def initialize(image_base64:, content_type:, categories: [])
     @image_base64 = image_base64
     @content_type = content_type
+    @categories = Array(categories)
   end
 
   def call
@@ -65,7 +66,25 @@ class DeepSeekService
   end
 
   def request_body
-    { model: ENV.fetch("DEEPSEEK_MODEL", "deepseek-flash"), messages: [ { role: "user", content: [ { type: "text", text: "Extract transaction data as JSON. Return only valid JSON with amount_cents, kind, occurred_at, merchant_name, category_hint, note, confidence." }, { type: "image_url", image_url: { url: "data:#{@content_type};base64,#{@image_base64}" } } ] } ], response_format: { type: "json_object" } }
+    { model: ENV.fetch("DEEPSEEK_MODEL", "deepseek-flash"), messages: [ { role: "user", content: [ { type: "text", text: prompt }, { type: "image_url", image_url: { url: "data:#{@content_type};base64,#{@image_base64}" } } ] } ], response_format: { type: "json_object" } }
+  end
+
+  def prompt
+    <<~PROMPT
+      Extract transaction data as JSON. Return only valid JSON with amount_cents, kind, occurred_at, merchant_name, category_hint, note, confidence.
+      #{category_instructions}
+    PROMPT
+  end
+
+  # 將用戶自己定義嘅分類餵入 prompt，限制 category_hint 只可以揀清單入面嘅名。
+  def category_instructions
+    return "Set category_hint to null." if @categories.empty?
+
+    options = @categories.map { |category| "- #{category.name} (#{category.kind})" }.join("\n")
+    <<~PROMPT
+      The user has defined these categories. Set category_hint to exactly one name from this list that matches the transaction kind, or null if none fit. Never invent a category.
+      #{options}
+    PROMPT
   end
 
   def elapsed_ms(started)

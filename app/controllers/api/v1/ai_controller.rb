@@ -15,12 +15,13 @@ module Api
         image = URI.open(uri.to_s, open_timeout: 10, read_timeout: 10)
         bytes = image.read
         sha = Digest::SHA256.hexdigest(bytes)
+        categories = user_categories
         cached = current_user.ai_import_logs.where(image_sha256: sha, status: :success).where("created_at > ?", Integer(ENV.fetch("AI_CACHE_HOURS", 24)).hours.ago).order(created_at: :desc).first
-        return render json: { data: cached_payload(cached) } if cached
+        return render json: { data: cached_payload(cached, categories:) } if cached
 
-        result = DeepSeekService.call(image_base64: Base64.strict_encode64(bytes), content_type: image.content_type || Marcel::MimeType.for(StringIO.new(bytes)))
+        result = DeepSeekService.call(image_base64: Base64.strict_encode64(bytes), content_type: image.content_type || Marcel::MimeType.for(StringIO.new(bytes)), categories:)
         log = current_user.ai_import_logs.create!(image_urls: [ url ], image_sha256: sha, status: result[:status], raw_response: result[:raw_response], parsed_json: result[:parsed], error_message: result[:error_message], tokens_in: result[:tokens_in], tokens_out: result[:tokens_out], latency_ms: result[:latency_ms])
-        payload = cached_payload(log)
+        payload = cached_payload(log, categories:)
         return render json: { data: payload }, status: :bad_gateway if log.failed?
         render json: { data: payload }
       rescue URI::InvalidURIError
@@ -46,8 +47,23 @@ module Api
 
       private
 
-      def cached_payload(log)
-        { id: log.id, image_urls: log.image_urls, sha256: log.image_sha256, status: log.status, parsed: log.parsed_json, raw_response: log.raw_response, error: log.error_message, tokens_in: log.tokens_in, tokens_out: log.tokens_out, latency_ms: log.latency_ms }
+      def cached_payload(log, categories:)
+        parsed = log.parsed_json || {}
+        { id: log.id, image_urls: log.image_urls, sha256: log.image_sha256, status: log.status, parsed: log.parsed_json, suggested_category_id: suggested_category_id(parsed, categories), raw_response: log.raw_response, error: log.error_message, tokens_in: log.tokens_in, tokens_out: log.tokens_out, latency_ms: log.latency_ms }
+      end
+
+      def user_categories
+        current_user.categories.order(:kind, :position, :created_at)
+      end
+
+      # AI 只回 category_hint（分類名），喺 backend 用返當前 user 嘅分類 resolve 做 id，
+      # 避免 AI 亂噏一個唔存在嘅 id。
+      def suggested_category_id(parsed, categories)
+        hint = (parsed["category_hint"] || parsed[:category_hint]).to_s.strip
+        kind = parsed["kind"] || parsed[:kind]
+        return nil if hint.empty?
+
+        categories.find { |category| category.kind == kind && category.name.casecmp?(hint) }&.id
       end
 
       def transaction_payload(transaction)

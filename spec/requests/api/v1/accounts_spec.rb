@@ -10,6 +10,7 @@ RSpec.describe "Accounts", type: :request do
     expect(response).to have_http_status(:ok)
     expect(json.fetch("data").pluck("name")).to include("現金")
     expect(json.fetch("data").pluck("kind")).to include("cash")
+    expect(json.fetch("data").pluck("color")).to include("#ecf0f1")
   end
 
   it "creates, updates, and deletes an unused account" do

@@ -1,6 +1,8 @@
 class User < ApplicationRecord
   has_secure_password
 
+  DEFAULT_COLOR = "#ecf0f1"
+
   has_many :ai_import_logs, dependent: :delete_all
   has_many :recurring_rules, dependent: :delete_all
   has_many :idempotency_keys, dependent: :delete_all
@@ -21,13 +23,13 @@ class User < ApplicationRecord
   private
 
   def create_default_bookkeeping_records
-    accounts.create!(name: "現金", kind: :cash, currency: currency)
+    accounts.create!(name: "現金", kind: :cash, currency: currency, color: DEFAULT_COLOR)
 
     [
       [ :expense, %w[飲食 交通 娛樂 購物 醫療 住屋 水電 其他支出] ],
       [ :income, %w[薪水 獎金 投資 兼職 其他收入] ]
     ].each do |kind, names|
-      names.each { |name| categories.create!(name: name, kind: kind) }
+      names.each { |name| categories.create!(name: name, kind: kind, color: DEFAULT_COLOR) }
     end
   end
 

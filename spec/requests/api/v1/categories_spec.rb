@@ -15,6 +15,7 @@ RSpec.describe "Categories", type: :request do
     expect(categories.select { |category| category["kind"] == "income" }.pluck("name"))
       .to eq(%w[薪水 獎金 投資 兼職 其他收入])
     expect(categories.pluck("name")).not_to include("收入")
+    expect(categories.pluck("color").uniq).to eq([ "#ecf0f1" ])
   end
 
   it "filters, creates, updates, and deletes categories" do

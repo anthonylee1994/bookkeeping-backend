@@ -180,14 +180,6 @@ paths:
       security: [{ bearerAuth: [] }]
       summary: Delete transaction
       responses: { '204': { description: Deleted } }
-  /api/v1/transactions/{id}/refund:
-    post:
-      tags: [Transactions]
-      security: [{ bearerAuth: [] }]
-      summary: Refund a transaction
-      parameters: [{ $ref: '#/components/parameters/Id' }]
-      requestBody: { $ref: '#/components/requestBodies/Refund' }
-      responses: { '200': { description: Refund transaction } }
   /api/v1/transactions/{id}/duplicate:
     post:
       tags: [Transactions]
@@ -287,7 +279,6 @@ components:
     Category: { required: true, content: { application/json: { schema: { $ref: '#/components/schemas/CategoryInput' } } } }
     Merchant: { required: true, content: { application/json: { schema: { $ref: '#/components/schemas/MerchantInput' } } } }
     Transaction: { required: true, content: { application/json: { schema: { $ref: '#/components/schemas/TransactionInput' } } } }
-    Refund: { content: { application/json: { schema: { type: object, properties: { amount_cents: { type: integer, minimum: 1 }, occurred_at: { type: string, format: date-time }, note: { type: string } } } } } }
     RecurringRule: { required: true, content: { application/json: { schema: { $ref: '#/components/schemas/RecurringRuleInput' } } } }
   responses:
     Unauthorized: { description: Unauthorized }

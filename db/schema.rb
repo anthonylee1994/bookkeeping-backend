@@ -10,7 +10,7 @@
 #
 # It's strongly recommended that you check this file into your version control system.
 
-ActiveRecord::Schema[8.1].define(version: 2026_09_14_170000) do
+ActiveRecord::Schema[8.1].define(version: 2026_09_15_180000) do
   create_table "accounts", id: { type: :string, limit: 36 }, force: :cascade do |t|
     t.string "color"
     t.datetime "created_at", null: false
@@ -138,7 +138,6 @@ ActiveRecord::Schema[8.1].define(version: 2026_09_14_170000) do
     t.text "note"
     t.datetime "occurred_at", null: false
     t.string "payment_method"
-    t.string "refund_of_id", limit: 36
     t.integer "source", default: 0, null: false
     t.string "transfer_account_id", limit: 36
     t.datetime "updated_at", null: false
@@ -146,7 +145,6 @@ ActiveRecord::Schema[8.1].define(version: 2026_09_14_170000) do
     t.index ["account_id"], name: "index_transactions_on_account_id"
     t.index ["category_id"], name: "index_transactions_on_category_id"
     t.index ["merchant_id"], name: "index_transactions_on_merchant_id"
-    t.index ["refund_of_id"], name: "index_transactions_on_refund_of_id"
     t.index ["transfer_account_id"], name: "index_transactions_on_transfer_account_id"
     t.index ["user_id", "kind", "occurred_at"], name: "index_transactions_on_user_id_and_kind_and_occurred_at"
     t.index ["user_id", "occurred_at", "kind"], name: "index_transactions_on_user_id_and_occurred_at_and_kind"
@@ -181,6 +179,5 @@ ActiveRecord::Schema[8.1].define(version: 2026_09_14_170000) do
   add_foreign_key "transactions", "accounts", on_delete: :restrict
   add_foreign_key "transactions", "categories", on_delete: :nullify
   add_foreign_key "transactions", "merchants", on_delete: :nullify
-  add_foreign_key "transactions", "transactions", column: "refund_of_id", on_delete: :cascade
   add_foreign_key "transactions", "users", on_delete: :cascade
 end

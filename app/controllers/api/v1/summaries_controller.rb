@@ -22,11 +22,10 @@ module Api
           scope = current_user.transactions.where(occurred_at: from..to)
           regular = scope.where.not(kind: :transfer)
           income = regular.where(kind: :income).sum(:amount_cents)
-          expense = regular.where(kind: :expense, refund_of_id: nil).sum(:amount_cents)
-          refund = regular.where(kind: :expense).where.not(refund_of_id: nil).sum(:amount_cents)
+          expense = regular.where(kind: :expense).sum(:amount_cents)
           render json: { data: {
             range: { from: from.iso8601, to: to.iso8601 }, income_cents: income, expense_cents: expense,
-            refund_cents: refund, net_cents: income - expense + refund,
+            net_cents: income - expense,
             by_category: by_category(regular), by_account: by_account(regular),
             transfers: { count: scope.where(kind: :transfer).count, total_cents: scope.where(kind: :transfer).sum(:amount_cents) },
             transactions: paginated_transactions(regular)
@@ -49,15 +48,15 @@ module Api
         scope.where(kind: :expense).group(:category_id).select(:category_id).map do |row|
           category = current_user.categories.find_by(id: row.category_id)
           items = scope.where(kind: :expense, category_id: row.category_id)
-          { category_id: row.category_id, name: category&.name, expense_cents: items.where(refund_of_id: nil).sum(:amount_cents), refund_cents: items.where.not(refund_of_id: nil).sum(:amount_cents) }
-        end.sort_by { |row| -(row[:expense_cents] + row[:refund_cents]) }
+          { category_id: row.category_id, name: category&.name, expense_cents: items.sum(:amount_cents) }
+        end.sort_by { |row| -row[:expense_cents] }
       end
 
       def by_account(scope)
         scope.group(:account_id).select(:account_id).map do |row|
           account = current_user.accounts.find_by(id: row.account_id)
           items = scope.where(account_id: row.account_id)
-          { account_id: row.account_id, name: account&.name, income_cents: items.where(kind: :income).sum(:amount_cents), expense_cents: items.where(kind: :expense, refund_of_id: nil).sum(:amount_cents), refund_cents: items.where(kind: :expense).where.not(refund_of_id: nil).sum(:amount_cents) }
+          { account_id: row.account_id, name: account&.name, income_cents: items.where(kind: :income).sum(:amount_cents), expense_cents: items.where(kind: :expense).sum(:amount_cents) }
         end
       end
 
@@ -66,7 +65,7 @@ module Api
         per_page = [ params.fetch(:per_page, 25).to_i, 1 ].max.clamp(1, 100)
         total = scope.count
         rows = scope.order(occurred_at: :desc).offset((page - 1) * per_page).limit(per_page)
-        { data: rows.map { |tx| tx.as_json(only: %i[id account_id category_id merchant_id kind amount_cents currency occurred_at note payment_method image_urls source refund_of_id transfer_account_id]).merge("net_amount_cents" => tx.amount_cents - tx.refunds.sum(:amount_cents)) }, meta: { page: page, per_page: per_page, total: total, total_pages: (total.to_f / per_page).ceil } }
+        { data: rows.map { |tx| tx.as_json(only: %i[id account_id category_id merchant_id kind amount_cents currency occurred_at note payment_method image_urls source transfer_account_id]) }, meta: { page: page, per_page: per_page, total: total, total_pages: (total.to_f / per_page).ceil } }
       end
     end
   end

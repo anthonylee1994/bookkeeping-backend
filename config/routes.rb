@@ -21,7 +21,6 @@ Rails.application.routes.draw do
       resources :merchants, only: %i[index create destroy]
       resources :transactions, only: %i[index create show update destroy] do
         member do
-          post :refund
           post :duplicate
         end
       end

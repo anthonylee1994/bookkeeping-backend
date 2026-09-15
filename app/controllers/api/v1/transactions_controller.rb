@@ -53,21 +53,10 @@ module Api
         head :no_content
       end
 
-      def refund
-        original = current_user.transactions.find(params[:id])
-        amount = params[:amount_cents].presence || original.amount_cents
-        if original.transfer? || amount.to_i <= 0 || amount.to_i > original.amount_cents - original.refunds.sum(:amount_cents)
-          return render_error(code: "validation_error", message: I18n.t("api.errors.invalid_refund"), status: :unprocessable_content)
-        end
-        refund = current_user.transactions.create!(account: original.account, kind: original.kind, amount_cents: amount, currency: original.currency, occurred_at: params[:occurred_at].presence || Time.zone.now, note: params[:note], source: :manual, refund_of: original)
-        render json: { data: transaction_payload(refund), net_amount_cents: original.amount_cents - original.refunds.sum(:amount_cents) }
-      end
-
       def duplicate
         original = current_user.transactions.find(params[:id])
         copy = original.dup
         copy.occurred_at = Time.zone.now
-        copy.refund_of_id = nil
         copy.save!
         render json: { data: transaction_payload(copy) }, status: :created
       end
@@ -79,7 +68,7 @@ module Api
       end
 
       def transaction_payload(transaction)
-        transaction.as_json(only: %i[id user_id account_id category_id merchant_id kind amount_cents currency occurred_at note payment_method image_urls source refund_of_id transfer_account_id created_at updated_at]).merge("net_amount_cents" => transaction.amount_cents - transaction.refunds.sum(:amount_cents))
+        transaction.as_json(only: %i[id user_id account_id category_id merchant_id kind amount_cents currency occurred_at note payment_method image_urls source transfer_account_id created_at updated_at])
       end
 
       def parse_time(value, end_of_day: false)

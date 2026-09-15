@@ -40,18 +40,6 @@ RSpec.describe "Transactions", type: :request do
     expect(json.dig("error", "code")).to eq("idempotency_conflict")
   end
 
-  it "creates refunds and cascades them when original is deleted" do
-    create_transaction
-    original_id = json.dig("data", "id")
-    post "/api/v1/transactions/#{original_id}/refund", params: { amount_cents: 400 }, headers: headers, as: :json
-    expect(response).to have_http_status(:ok)
-    expect(json["net_amount_cents"]).to eq(600)
-    refund_id = json.dig("data", "id")
-    delete "/api/v1/transactions/#{original_id}", headers: headers
-    expect(response).to have_http_status(:no_content)
-    expect(Transaction.where(id: refund_id)).not_to exist
-  end
-
   it "duplicates a transaction with the current timestamp" do
     create_transaction
     id = json.dig("data", "id")

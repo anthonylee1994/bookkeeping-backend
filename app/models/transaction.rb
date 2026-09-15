@@ -3,9 +3,7 @@ class Transaction < ApplicationRecord
   belongs_to :account
   belongs_to :category, optional: true
   belongs_to :merchant, optional: true
-  belongs_to :refund_of, class_name: "Transaction", optional: true
   belongs_to :transfer_account, class_name: "Account", optional: true
-  has_many :refunds, class_name: "Transaction", foreign_key: :refund_of_id, dependent: :destroy
   has_one :recurring_occurrence, dependent: :nullify
   has_one :ai_import_log, foreign_key: :transaction_id, dependent: :nullify
 

@@ -49,8 +49,7 @@ RSpec.describe User, type: :model do
     account = user.accounts.first
     category = user.categories.first
     merchant = create(:merchant, user: user)
-    transaction = create(:transaction, user: user, account: account, category: category, merchant: merchant)
-    create(:transaction, user: user, account: account, refund_of: transaction)
+    create(:transaction, user: user, account: account, category: category, merchant: merchant)
     create(:transaction, user: user, account: account, kind: :transfer, transfer_account: create(:account, user: user))
     rule = create(:recurring_rule, user: user, account: account, category: category, merchant: merchant)
     rule.recurring_occurrences.create!(occurred_on: Date.current)

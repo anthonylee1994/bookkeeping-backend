@@ -15,7 +15,8 @@ class User < ApplicationRecord
     "薪水" => "mdi:bank",
     "獎金" => "mdi:gift",
     "投資" => "mdi:piggy-bank",
-    "兼職" => "mdi:cash"
+    "兼職" => "mdi:cash",
+    "其他收入" => "mdi:wallet"
   }.freeze
 
   has_many :ai_import_logs, dependent: :delete_all

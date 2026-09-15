@@ -29,7 +29,7 @@ RSpec.describe "Categories", type: :request do
       "獎金" => "mdi:gift",
       "投資" => "mdi:piggy-bank",
       "兼職" => "mdi:cash",
-      "其他收入" => nil
+      "其他收入" => "mdi:wallet"
     )
   end
 

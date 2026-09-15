@@ -43,6 +43,22 @@ RSpec.describe "Phase 5 receipt and AI APIs", type: :request do
     expect(response).to have_http_status(:bad_request)
   end
 
+  it "ignores a cached parse produced with a stale prompt or category set" do
+    image = "\xFF\xD8\xFF\xE0receipt".b
+    sha = Digest::SHA256.hexdigest(image)
+    stale = user.ai_import_logs.create!(image_urls: [ "https://img.eservice-hk.net/stale.jpg" ], image_sha256: sha, status: :success, parsed_json: { "amount_cents" => 1, "kind" => "expense", "category_hint" => nil })
+    stub_request(:get, "https://img.eservice-hk.net/stale.jpg").to_return(status: 200, body: image, headers: { "Content-Type" => "image/jpeg" })
+    parsed = { amount_cents: 4500, kind: "expense", occurred_at: "2026-02-21T15:45:00", category_hint: "飲食", confidence: 0.9 }
+    deepseek = stub_request(:post, "https://api.deepseek.com/chat/completions").to_return(status: 200, body: { choices: [ { message: { content: parsed.to_json } } ], usage: {} }.to_json)
+
+    post "/api/v1/ai/parse", params: { image_url: "https://img.eservice-hk.net/stale.jpg" }, headers: headers, as: :json
+
+    expect(response).to have_http_status(:ok)
+    expect(deepseek).to have_been_requested.once
+    expect(json.dig("data", "id")).not_to eq(stale.id)
+    expect(json.dig("data", "parsed", "amount_cents")).to eq(4500)
+  end
+
   it "handles multibyte DeepSeek responses without encoding errors" do
     image = "\xFF\xD8\xFF\xE0receipt".b
     stub_request(:get, "https://img.eservice-hk.net/receipt-cn.jpg").to_return(status: 200, body: image, headers: { "Content-Type" => "image/jpeg" })
@@ -62,18 +78,62 @@ RSpec.describe "Phase 5 receipt and AI APIs", type: :request do
     stub_request(:get, "https://img.eservice-hk.net/receipt-cat.jpg").to_return(status: 200, body: image, headers: { "Content-Type" => "image/jpeg" })
     parsed = { amount_cents: 1234, kind: "expense", occurred_at: "2026-09-14T10:00:00+08:00", category_hint: "飲食", confidence: 0.9 }
     deepseek = stub_request(:post, "https://api.deepseek.com/chat/completions")
-      .with { |request| JSON.parse(request.body).dig("messages", 0, "content", 0, "text").include?("- 飲食 (expense)") }
+      .with { |request| JSON.parse(request.body).dig("messages", 0, "content", 0, "text").include?("EXPENSE categories: [\"飲食\"") }
       .to_return(status: 200, body: { choices: [ { message: { content: parsed.to_json } } ], usage: {} }.to_json)
 
     post "/api/v1/ai/parse", params: { image_url: "https://img.eservice-hk.net/receipt-cat.jpg" }, headers: headers, as: :json
 
     expect(response).to have_http_status(:ok)
+    expect(json.dig("data", "parsed", "category_hint")).to eq("飲食")
     expect(json.dig("data", "suggested_category_id")).to eq(food.id)
     expect(deepseek).to have_been_requested.once
   end
 
-  it "does not suggest a category when the hint kind does not match" do
-    user.categories.find_by!(name: "薪水", kind: :income)
+  it "normalizes the category hint to the stored category name" do
+    groceries = user.categories.create!(name: "Groceries", kind: :expense)
+    image = "\xFF\xD8\xFF\xE0receipt".b
+    stub_request(:get, "https://img.eservice-hk.net/receipt-case.jpg").to_return(status: 200, body: image, headers: { "Content-Type" => "image/jpeg" })
+    parsed = { amount_cents: 1234, kind: "expense", occurred_at: "2026-09-14T10:00:00+08:00", category_hint: "groceries", confidence: 0.9 }
+    stub_request(:post, "https://api.deepseek.com/chat/completions").to_return(status: 200, body: { choices: [ { message: { content: parsed.to_json } } ], usage: {} }.to_json)
+
+    post "/api/v1/ai/parse", params: { image_url: "https://img.eservice-hk.net/receipt-case.jpg" }, headers: headers, as: :json
+
+    expect(response).to have_http_status(:ok)
+    expect(json.dig("data", "parsed", "category_hint")).to eq("Groceries")
+    expect(json.dig("data", "suggested_category_id")).to eq(groceries.id)
+  end
+
+  it "recovers the parse when the model prefixes an extra json_object marker" do
+    food = user.categories.find_by!(name: "飲食", kind: :expense)
+    image = "\xFF\xD8\xFF\xE0receipt".b
+    stub_request(:get, "https://img.eservice-hk.net/receipt-prefix.jpg").to_return(status: 200, body: image, headers: { "Content-Type" => "image/jpeg" })
+    parsed = { amount_cents: 4500, kind: "expense", occurred_at: "2026-02-21T15:45:00", category_hint: "飲食", confidence: 0.86 }
+    content = %({"type": "json_object"}\n#{parsed.to_json})
+    stub_request(:post, "https://api.deepseek.com/chat/completions").to_return(status: 200, body: { choices: [ { message: { content: content } } ], usage: {} }.to_json)
+
+    post "/api/v1/ai/parse", params: { image_url: "https://img.eservice-hk.net/receipt-prefix.jpg" }, headers: headers, as: :json
+
+    expect(response).to have_http_status(:ok)
+    expect(json.dig("data", "status")).to eq("success")
+    expect(json.dig("data", "parsed", "category_hint")).to eq("飲食")
+    expect(json.dig("data", "parsed", "type")).to be_nil
+    expect(json.dig("data", "suggested_category_id")).to eq(food.id)
+  end
+
+  it "forces an unmatched category hint to null" do
+    image = "\xFF\xD8\xFF\xE0receipt".b
+    stub_request(:get, "https://img.eservice-hk.net/receipt-nomatch.jpg").to_return(status: 200, body: image, headers: { "Content-Type" => "image/jpeg" })
+    parsed = { amount_cents: 1234, kind: "expense", occurred_at: "2026-09-14T10:00:00+08:00", category_hint: "餐飲", confidence: 0.9 }
+    stub_request(:post, "https://api.deepseek.com/chat/completions").to_return(status: 200, body: { choices: [ { message: { content: parsed.to_json } } ], usage: {} }.to_json)
+
+    post "/api/v1/ai/parse", params: { image_url: "https://img.eservice-hk.net/receipt-nomatch.jpg" }, headers: headers, as: :json
+
+    expect(response).to have_http_status(:ok)
+    expect(json.dig("data", "parsed", "category_hint")).to be_nil
+    expect(json.dig("data", "suggested_category_id")).to be_nil
+  end
+
+  it "forces the hint to null when the kind does not match" do
     image = "\xFF\xD8\xFF\xE0receipt".b
     stub_request(:get, "https://img.eservice-hk.net/receipt-kind.jpg").to_return(status: 200, body: image, headers: { "Content-Type" => "image/jpeg" })
     parsed = { amount_cents: 1234, kind: "expense", occurred_at: "2026-09-14T10:00:00+08:00", category_hint: "薪水", confidence: 0.9 }
@@ -82,6 +142,7 @@ RSpec.describe "Phase 5 receipt and AI APIs", type: :request do
     post "/api/v1/ai/parse", params: { image_url: "https://img.eservice-hk.net/receipt-kind.jpg" }, headers: headers, as: :json
 
     expect(response).to have_http_status(:ok)
+    expect(json.dig("data", "parsed", "category_hint")).to be_nil
     expect(json.dig("data", "suggested_category_id")).to be_nil
   end
 

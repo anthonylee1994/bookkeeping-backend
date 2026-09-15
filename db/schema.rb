@@ -10,7 +10,7 @@
 #
 # It's strongly recommended that you check this file into your version control system.
 
-ActiveRecord::Schema[8.1].define(version: 2026_09_15_180000) do
+ActiveRecord::Schema[8.1].define(version: 2026_09_15_190000) do
   create_table "accounts", id: { type: :string, limit: 36 }, force: :cascade do |t|
     t.string "color"
     t.datetime "created_at", null: false
@@ -33,6 +33,7 @@ ActiveRecord::Schema[8.1].define(version: 2026_09_15_180000) do
     t.json "image_urls", default: [], null: false
     t.integer "latency_ms"
     t.string "model", default: "deepseek-flash", null: false
+    t.string "parse_signature"
     t.json "parsed_json"
     t.string "provider", default: "deepseek", null: false
     t.text "raw_response"
@@ -45,6 +46,7 @@ ActiveRecord::Schema[8.1].define(version: 2026_09_15_180000) do
     t.index ["image_sha256"], name: "index_ai_import_logs_on_image_sha256"
     t.index ["transaction_id"], name: "index_ai_import_logs_on_transaction_id"
     t.index ["user_id", "image_sha256", "created_at"], name: "idx_on_user_id_image_sha256_created_at_a5f17f3d34"
+    t.index ["user_id", "image_sha256", "parse_signature"], name: "idx_ai_import_logs_cache_lookup"
     t.index ["user_id"], name: "index_ai_import_logs_on_user_id"
   end
 

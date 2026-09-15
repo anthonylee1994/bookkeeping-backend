@@ -33,12 +33,12 @@ module Api
       private
 
       def category_breakdown(scope)
-        rows = scope.where(kind: :expense).group(:category_id).select(:category_id)
-        rows.map do |row|
+        regular = scope.where.not(kind: :transfer)
+        regular.group(:category_id).select(:category_id).map do |row|
           category = current_user.categories.find_by(id: row.category_id)
-          items = scope.where(kind: :expense, category_id: row.category_id)
-          { category_id: row.category_id, name: category&.name, expense_cents: items.sum(:amount_cents) }
-        end.sort_by { |x| -x[:expense_cents] }.first(5)
+          items = regular.where(category_id: row.category_id)
+          { category_id: row.category_id, name: category&.name, income_cents: items.where(kind: :income).sum(:amount_cents), expense_cents: items.where(kind: :expense).sum(:amount_cents) }
+        end.sort_by { |row| [ -row[:expense_cents], -row[:income_cents] ] }
       end
 
       def account_balances

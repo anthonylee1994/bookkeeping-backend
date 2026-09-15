@@ -24,6 +24,7 @@ RSpec.describe "Phase 6 dashboard and summaries", type: :request do
     expect(data.dig("transfers", "count")).to eq(1)
     expect(data.dig("transfers", "total_cents")).to eq(20_000)
     expect(data.dig("by_category", 0).fetch("expense_cents")).to eq(50_000)
+    expect(data.fetch("by_category").map { |row| row.fetch("income_cents") }.sum).to eq(100_000)
   end
 
   it "uses Hong Kong time for daily boundaries" do
@@ -74,5 +75,6 @@ RSpec.describe "Phase 6 dashboard and summaries", type: :request do
     expect(data.values_at("income_cents", "expense_cents", "net_cents")).to eq([10_000, 3_000, 7_000])
     expect(data.fetch("recent_transactions").size).to eq(2)
     expect(data.fetch("recurring_reminders").size).to eq(1)
+    expect(data.dig("by_category", 0).values_at("income_cents", "expense_cents")).to eq([10_000, 3_000])
   end
 end

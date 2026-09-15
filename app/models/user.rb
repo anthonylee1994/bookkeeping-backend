@@ -38,7 +38,7 @@ class User < ApplicationRecord
   private
 
   def create_default_bookkeeping_records
-    accounts.create!(name: "現金", kind: :cash, currency: currency, color: DEFAULT_COLOR)
+    accounts.create!(name: "現金", kind: :cash, currency: currency, color: DEFAULT_COLOR, icon: "mdi:cash")
 
     [
       [ :expense, %w[飲食 交通 娛樂 購物 醫療 住屋 水電 其他支出] ],

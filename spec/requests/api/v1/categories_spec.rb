@@ -16,6 +16,21 @@ RSpec.describe "Categories", type: :request do
       .to eq(%w[薪水 獎金 投資 兼職 其他收入])
     expect(categories.pluck("name")).not_to include("收入")
     expect(categories.pluck("color").uniq).to eq([ "#ecf0f1" ])
+    expect(categories.to_h { |category| [ category["name"], category["icon"] ] }).to eq(
+      "飲食" => "mdi:food",
+      "交通" => "mdi:bus",
+      "娛樂" => "mdi:music",
+      "購物" => "mdi:cart",
+      "醫療" => "mdi:medical-bag",
+      "住屋" => "mdi:home",
+      "水電" => "mdi:lightning-bolt",
+      "其他支出" => "mdi:credit-card",
+      "薪水" => "mdi:bank",
+      "獎金" => "mdi:gift",
+      "投資" => "mdi:piggy-bank",
+      "兼職" => "mdi:cash",
+      "其他收入" => nil
+    )
   end
 
   it "filters, creates, updates, and deletes categories" do

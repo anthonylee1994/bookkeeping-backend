@@ -63,6 +63,22 @@ RSpec.describe "Phase 6 dashboard and summaries", type: :request do
     expect(transactions.dig("meta", "total_pages")).to eq(2)
   end
 
+  it "returns a daily breakdown for monthly summaries" do
+    create_transaction(kind: :income, amount_cents: 1_000, occurred_at: Time.zone.parse("2026-09-01 10:00:00"))
+    create_transaction(kind: :expense, amount_cents: 400, occurred_at: Time.zone.parse("2026-09-01 11:00:00"))
+    create_transaction(kind: :income, amount_cents: 2_000, occurred_at: Time.zone.parse("2026-09-03 09:00:00"))
+    other = create(:account, user: user, name: "Savings")
+    create_transaction(kind: :transfer, amount_cents: 5_000, transfer_account: other, occurred_at: Time.zone.parse("2026-09-03 12:00:00"))
+
+    get "/api/v1/summaries/monthly", params: { date: "2026-09-14" }, headers: headers
+
+    expect(response).to have_http_status(:ok)
+    daily = json.dig("data", "daily")
+    expect(daily.map { |row| row.fetch("date") }).to eq([ "2026-09-01", "2026-09-03" ])
+    expect(daily.first.values_at("income_cents", "expense_cents", "net_cents")).to eq([ 1_000, 400, 600 ])
+    expect(daily.last.values_at("income_cents", "expense_cents", "net_cents")).to eq([ 2_000, 0, 2_000 ])
+  end
+
   it "returns dashboard monthly metrics and recurring reminders" do
     create_transaction(kind: :income, amount_cents: 10_000, occurred_at: Time.zone.parse("2026-09-10 12:00:00"))
     create_transaction(kind: :expense, amount_cents: 3_000, occurred_at: Time.zone.parse("2026-09-11 12:00:00"))

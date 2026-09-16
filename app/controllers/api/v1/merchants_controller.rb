@@ -5,9 +5,10 @@ module Api
         merchants = current_user.merchants
         if params[:q].present?
           query = ActiveRecord::Base.sanitize_sql_like(params[:q].to_s)
-          merchants = merchants.where("name LIKE ?", "%#{query}%")
+          merchants = merchants.where("name LIKE ?", "%#{query}%").order(usage_count: :desc, name: :asc).limit(10)
+        else
+          merchants = merchants.order(usage_count: :desc, name: :asc)
         end
-        merchants = merchants.order(usage_count: :desc, name: :asc).limit(10)
         render json: { data: merchants.map { |merchant| merchant_payload(merchant) } }
       end
 

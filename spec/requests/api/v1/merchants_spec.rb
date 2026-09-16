@@ -17,6 +17,17 @@ RSpec.describe "Merchants", type: :request do
     expect(json.fetch("data").pluck("name")).not_to include("Coffee outsider", "Coffee 0")
   end
 
+  it "returns every merchant when no search query is given" do
+    12.times { |index| create(:merchant, user: user, name: "Merchant #{index}", usage_count: index) }
+    create(:merchant, name: "Outsider")
+
+    get "/api/v1/merchants", headers: headers
+
+    expect(response).to have_http_status(:ok)
+    expect(json.fetch("data").length).to eq(12)
+    expect(json.fetch("data").pluck("name")).not_to include("Outsider")
+  end
+
   it "creates a merchant and nullifies its default category when the category is deleted" do
     category = user.categories.expense.first
     post "/api/v1/merchants", params: { name: "Cafe", default_category_id: category.id }, headers: headers, as: :json

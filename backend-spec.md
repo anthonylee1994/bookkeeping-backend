@@ -605,7 +605,7 @@ Content-Type: application/json
 - [x] Account / Category / Merchant controller CRUD + hard delete
   - Category / Merchant：delete 時 FK nullify
   - Account：有交易或 RecurringRule → 422 `account_in_use`
-- [x] Merchant autocomplete：`GET /merchants?q=`，回 top 10，SQLite `LIKE`
+- [x] Merchant autocomplete：`GET /merchants?q=`，回 top 10，SQLite `LIKE`；無 `q` 時回傳全部（商戶管理頁用）
 - [x] 所有 query scope 到 `current_user`
 
 **驗收**

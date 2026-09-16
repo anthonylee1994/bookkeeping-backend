@@ -421,6 +421,7 @@ DEPENDENCIES
   faraday
   faraday-multipart (~> 1.2)
   faraday-retry
+  json-schema
   jwt
   kamal
   lograge

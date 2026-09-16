@@ -13,6 +13,7 @@ gem "pagy", "~> 9.3"
 gem "faraday"
 gem "faraday-retry"
 gem "stoplight"
+gem "json-schema"
 
 gem "lograge"
 gem "solid_cache"

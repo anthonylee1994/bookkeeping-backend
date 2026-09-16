@@ -127,6 +127,8 @@
 - unique index `(user_id, name)`
 - timestamps
 
+**更新**：可改 `name`、`default_category_id`（`default_category` 必須屬於同一 user，否則 422）。
+
 **刪除**：hard delete；所屬交易 `merchant_id` SET NULL（`on_delete: :nullify`）。
 
 ### 2.5 Transaction

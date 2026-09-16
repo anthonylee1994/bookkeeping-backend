@@ -82,7 +82,12 @@ paths:
         - { $ref: '#/components/parameters/Date' }
         - { $ref: '#/components/parameters/Page' }
         - { $ref: '#/components/parameters/PerPage' }
-      responses: { '200': { description: Summary data } }
+      responses:
+        '200':
+          description: Summary data
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Summary' }
   /api/v1/accounts:
     get:
       tags: [Accounts]
@@ -373,3 +378,51 @@ components:
         start_on: { type: string, format: date }
         end_on: { type: string, format: date, nullable: true }
         next_run_at: { type: string, format: date-time }
+    DailyBreakdown:
+      type: object
+      required: [date, net_cents]
+      properties:
+        date: { type: string, format: date }
+        net_cents: { type: integer }
+    Summary:
+      type: object
+      properties:
+        range:
+          type: object
+          properties:
+            from: { type: string, format: date-time }
+            to: { type: string, format: date-time }
+        income_cents: { type: integer }
+        expense_cents: { type: integer }
+        net_cents: { type: integer }
+        daily:
+          type: array
+          items: { $ref: '#/components/schemas/DailyBreakdown' }
+        by_category:
+          type: array
+          items:
+            type: object
+            properties:
+              category_id: { type: string, format: uuid, nullable: true }
+              name: { type: string, nullable: true }
+              income_cents: { type: integer }
+              expense_cents: { type: integer }
+        by_account:
+          type: array
+          items:
+            type: object
+            properties:
+              account_id: { type: string, format: uuid, nullable: true }
+              name: { type: string, nullable: true }
+              income_cents: { type: integer }
+              expense_cents: { type: integer }
+        transfers:
+          type: object
+          properties:
+            count: { type: integer }
+            total_cents: { type: integer }
+        transactions:
+          type: object
+          properties:
+            data: { type: array, items: { type: object } }
+            meta: { type: object }

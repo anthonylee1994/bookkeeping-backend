@@ -75,8 +75,9 @@ RSpec.describe "Phase 6 dashboard and summaries", type: :request do
     expect(response).to have_http_status(:ok)
     daily = json.dig("data", "daily")
     expect(daily.map { |row| row.fetch("date") }).to eq([ "2026-09-01", "2026-09-03" ])
-    expect(daily.first.values_at("income_cents", "expense_cents", "net_cents")).to eq([ 1_000, 400, 600 ])
-    expect(daily.last.values_at("income_cents", "expense_cents", "net_cents")).to eq([ 2_000, 0, 2_000 ])
+    expect(daily.first.fetch("net_cents")).to eq(600)
+    expect(daily.last.fetch("net_cents")).to eq(2_000)
+    expect(daily.first.keys).to contain_exactly("date", "net_cents")
   end
 
   it "returns dashboard monthly metrics and recurring reminders" do

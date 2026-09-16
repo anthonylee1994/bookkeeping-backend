@@ -341,7 +341,7 @@ POST /api/v1/transactions/550e8400-e29b-41d4-a716-446655440000/refund
 | GET    | `/summaries/weekly?date=2026-09-14`  | 該週（Mon-Sun）   |
 | GET    | `/summaries/monthly?date=2026-09-14` | 該月（1 號-月末） |
 
-各期間都會回 `daily`（按香港時區逐日分組，只計收入／支出，transfer 不計）；月報用嚟畫收支日曆。
+各期間都會回 `daily`（按香港時區逐日分組嘅淨收支，transfer 不計）；月報用嚟畫收支日曆。
 
 **回應格式**：
 
@@ -354,7 +354,7 @@ POST /api/v1/transactions/550e8400-e29b-41d4-a716-446655440000/refund
     "refund_cents": 5000,
     "net_cents": 55000,
     "daily": [
-      { "date": "2026-09-14", "income_cents": 100000, "expense_cents": 45000, "net_cents": 55000 }
+      { "date": "2026-09-14", "net_cents": 55000 }
     ],
     "by_category": [
       { "category_id": "9b1deb4d-3b7d-4bad-9bdd-2b0d7b3dcb6d", "name": "飲食", "expense_cents": 30000, "refund_cents": 1000 }

@@ -49,7 +49,7 @@ module Api
         scope.group_by { |transaction| transaction.occurred_at.in_time_zone.to_date }.sort.map do |day, rows|
           income = rows.select { |transaction| transaction.kind == "income" }.sum(&:amount_cents)
           expense = rows.select { |transaction| transaction.kind == "expense" }.sum(&:amount_cents)
-          { date: day.iso8601, income_cents: income, expense_cents: expense, net_cents: income - expense }
+          { date: day.iso8601, net_cents: income - expense }
         end
       end
 

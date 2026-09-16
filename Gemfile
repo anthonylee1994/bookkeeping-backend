@@ -8,7 +8,7 @@ gem "bcrypt", "~> 3.1.7"
 gem "jwt"
 gem "rack-cors"
 gem "rack-attack"
-gem "pagy", "~> 9.3"
+gem "pagy", "~> 43.6"
 
 gem "faraday"
 gem "faraday-retry"

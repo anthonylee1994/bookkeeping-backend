@@ -20,6 +20,15 @@ module Api
         end
       end
 
+      def update
+        merchant = current_user.merchants.find(params[:id])
+        if merchant.update(merchant_params)
+          render json: { data: merchant_payload(merchant) }
+        else
+          render_validation_error(merchant)
+        end
+      end
+
       def destroy
         current_user.merchants.find(params[:id]).destroy!
         head :no_content

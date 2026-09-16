@@ -19,7 +19,7 @@ Rails.application.routes.draw do
       get "summaries/monthly", to: "summaries#monthly"
       resources :accounts, only: %i[index create update destroy]
       resources :categories, only: %i[index create update destroy]
-      resources :merchants, only: %i[index create destroy]
+      resources :merchants, only: %i[index create update destroy]
       resources :transactions, only: %i[index create show update destroy] do
         member do
           post :duplicate

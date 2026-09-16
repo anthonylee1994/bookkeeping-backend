@@ -147,11 +147,17 @@ paths:
       requestBody: { $ref: '#/components/requestBodies/Merchant' }
       responses: { '201': { description: Created } }
   /api/v1/merchants/{id}:
+    parameters: [{ $ref: '#/components/parameters/Id' }]
+    patch:
+      tags: [Merchants]
+      security: [{ bearerAuth: [] }]
+      summary: Update merchant
+      requestBody: { $ref: '#/components/requestBodies/Merchant' }
+      responses: { '200': { description: Updated } }
     delete:
       tags: [Merchants]
       security: [{ bearerAuth: [] }]
       summary: Delete merchant
-      parameters: [{ $ref: '#/components/parameters/Id' }]
       responses: { '204': { description: Deleted } }
   /api/v1/transactions:
     get:

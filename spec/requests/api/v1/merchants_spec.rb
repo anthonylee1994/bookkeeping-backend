@@ -36,4 +36,35 @@ RSpec.describe "Merchants", type: :request do
 
     expect(response).to have_http_status(:unprocessable_content)
   end
+
+  it "updates a merchant's name and default category" do
+    merchant = create(:merchant, user: user, name: "Cafe")
+    category = user.categories.expense.first
+
+    patch "/api/v1/merchants/#{merchant.id}", params: { name: "Coffee Shop", default_category_id: category.id }, headers: headers, as: :json
+
+    expect(response).to have_http_status(:ok)
+    expect(json.dig("data", "name")).to eq("Coffee Shop")
+    expect(json.dig("data", "default_category_id")).to eq(category.id)
+    expect(merchant.reload.default_category_id).to eq(category.id)
+  end
+
+  it "rejects an update that points at another user's category" do
+    merchant = create(:merchant, user: user)
+    category = create(:category)
+
+    patch "/api/v1/merchants/#{merchant.id}", params: { default_category_id: category.id }, headers: headers, as: :json
+
+    expect(response).to have_http_status(:unprocessable_content)
+    expect(merchant.reload.default_category_id).to be_nil
+  end
+
+  it "does not update another user's merchant" do
+    merchant = create(:merchant)
+
+    patch "/api/v1/merchants/#{merchant.id}", params: { name: "Hacked" }, headers: headers, as: :json
+
+    expect(response).to have_http_status(:not_found)
+    expect(merchant.reload.name).not_to eq("Hacked")
+  end
 end

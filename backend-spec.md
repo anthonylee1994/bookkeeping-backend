@@ -274,6 +274,7 @@
 | ------ | ------------------------ | ------------------------------------------ |
 | GET    | `/merchants?q=starbucks` | autocomplete                               |
 | POST   | `/merchants`             | create                                     |
+| PATCH  | `/merchants/:id`         | update（name／default_category_id）        |
 | DELETE | `/merchants/:id`         | hard delete（交易 `merchant_id` SET NULL） |
 
 ### 3.5 Transactions

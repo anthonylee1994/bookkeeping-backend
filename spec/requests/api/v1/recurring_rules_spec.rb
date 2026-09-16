@@ -19,6 +19,27 @@ RSpec.describe "Recurring rules", type: :request do
     expect(json.dig("data", "status")).to eq("active")
   end
 
+  it "lists all rules and filters by status" do
+    create(:recurring_rule, user: user, account: account, status: :active, note: "active rule")
+    create(:recurring_rule, user: user, account: account, status: :paused, note: "paused rule")
+
+    get "/api/v1/recurring_rules", headers: headers
+    expect(response).to have_http_status(:ok)
+    expect(json["data"].map { |rule| rule["note"] }).to contain_exactly("active rule", "paused rule")
+
+    get "/api/v1/recurring_rules", params: { status: "paused" }, headers: headers
+    expect(response).to have_http_status(:ok)
+    expect(json["data"].map { |rule| rule["note"] }).to contain_exactly("paused rule")
+
+    get "/api/v1/recurring_rules", params: { status: "ended" }, headers: headers
+    expect(response).to have_http_status(:ok)
+    expect(json["data"]).to be_empty
+
+    get "/api/v1/recurring_rules", params: { status: "bogus" }, headers: headers
+    expect(response).to have_http_status(:ok)
+    expect(json["data"]).to be_empty
+  end
+
   it "runs now once and rejects a second materialization" do
     post "/api/v1/recurring_rules", params: rule_params(next_run_at: 1.hour.from_now), headers: headers, as: :json
     id = json.dig("data", "id")

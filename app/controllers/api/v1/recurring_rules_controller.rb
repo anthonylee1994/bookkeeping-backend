@@ -2,7 +2,9 @@ module Api
   module V1
     class RecurringRulesController < ApplicationController
       def index
-        render json: { data: current_user.recurring_rules.order(:created_at).map { |rule| rule_payload(rule) } }
+        rules = current_user.recurring_rules.order(:created_at)
+        rules = rules.where(status: params[:status]) if params[:status].present?
+        render json: { data: rules.map { |rule| rule_payload(rule) } }
       end
 
       def create

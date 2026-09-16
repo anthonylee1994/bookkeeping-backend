@@ -302,7 +302,7 @@ POST /api/v1/transactions/550e8400-e29b-41d4-a716-446655440000/refund
 
 | Method | Path                             | 說明                          |
 | ------ | -------------------------------- | ----------------------------- |
-| GET    | `/recurring_rules`               | list                          |
+| GET    | `/recurring_rules`               | list（可選 `?status=active\|paused\|ended` filter） |
 | POST   | `/recurring_rules`               | create                        |
 | PATCH  | `/recurring_rules/:id`           | update                        |
 | DELETE | `/recurring_rules/:id`           | hard delete（已產生交易保留） |

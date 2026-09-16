@@ -192,6 +192,11 @@ paths:
       tags: [Recurring rules]
       security: [{ bearerAuth: [] }]
       summary: List recurring rules
+      parameters:
+        - name: status
+          in: query
+          required: false
+          schema: { type: string, enum: [active, paused, ended] }
       responses: { '200': { description: Recurring rules } }
     post:
       tags: [Recurring rules]

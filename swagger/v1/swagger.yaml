@@ -53,6 +53,15 @@ paths:
       security: [{ bearerAuth: [] }]
       summary: Current user
       responses: { '200': { description: User profile } }
+  /api/v1/me/password:
+    patch:
+      tags: [Auth]
+      security: [{ bearerAuth: [] }]
+      summary: Change the current user's password
+      requestBody: { $ref: '#/components/requestBodies/Password' }
+      responses:
+        '200': { description: Updated user profile }
+        '422': { description: Invalid current password or new password }
   /api/v1/dashboard:
     get:
       tags: [Dashboard]
@@ -285,6 +294,7 @@ components:
     Merchant: { required: true, content: { application/json: { schema: { $ref: '#/components/schemas/MerchantInput' } } } }
     Transaction: { required: true, content: { application/json: { schema: { $ref: '#/components/schemas/TransactionInput' } } } }
     RecurringRule: { required: true, content: { application/json: { schema: { $ref: '#/components/schemas/RecurringRuleInput' } } } }
+    Password: { required: true, content: { application/json: { schema: { $ref: '#/components/schemas/PasswordInput' } } } }
   responses:
     Unauthorized: { description: Unauthorized }
     ValidationError: { description: Validation error }
@@ -295,6 +305,13 @@ components:
       properties:
         username: { type: string }
         password: { type: string, format: password, minLength: 8 }
+    PasswordInput:
+      type: object
+      required: [password_challenge, password]
+      properties:
+        password_challenge: { type: string, format: password }
+        password: { type: string, format: password, minLength: 8 }
+        password_confirmation: { type: string, format: password }
     AccountInput:
       type: object
       required: [name, kind, currency]

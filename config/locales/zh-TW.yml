@@ -6,6 +6,7 @@ zh-TW:
       parameter_missing: "缺少必要參數或參數不可為空：%{parameter}"
       username_taken: "使用者名稱已被使用"
       invalid_credentials: "使用者名稱或密碼不正確"
+      invalid_current_password: "目前密碼不正確"
       rate_limited: "請求過於頻繁，請稍後再試"
       account_in_use: "帳戶已有交易或週期性規則，無法刪除"
       invalid_value: "參數值無效"

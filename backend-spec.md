@@ -244,6 +244,9 @@
 | POST   | `/auth/register` | username + password       |
 | POST   | `/auth/login`    | username + password → JWT |
 | GET    | `/me`            | 當前 user                 |
+| PATCH  | `/me/password`   | 更改密碼                  |
+
+> **更改密碼**：`PATCH /me/password`，body 為 `password_challenge`（目前密碼）、`password`（新密碼，最少 8 字）、`password_confirmation`（可選）。目前密碼錯 → 422 `invalid_current_password`；新密碼唔符 validation → 422 `validation_error`；成功 → 200 回更新後嘅 user。已有 JWT 唔會失效（無 token rotation）。
 
 > **Logout**：backend **冇** `/auth/logout`、**冇** `/sessions`。Frontend 刪本地 JWT 就算登出。舊 token 仍然有效，直至 rotate `JWT_SECRET`。
 

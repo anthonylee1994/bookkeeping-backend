@@ -12,6 +12,7 @@ Rails.application.routes.draw do
       post "auth/register", to: "auth#register"
       post "auth/login", to: "auth#login"
       get "me", to: "me#show"
+      patch "me/password", to: "me#update_password"
       get "dashboard", to: "dashboard#show"
       get "summaries/daily", to: "summaries#daily"
       get "summaries/weekly", to: "summaries#weekly"

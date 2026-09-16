@@ -7,6 +7,12 @@ class Rack::Attack
     req.ip if req.path == "/api/v1/auth/login" && req.post?
   end
 
+  throttle("auth/password", limit: 5, period: 1.minute) do |req|
+    if req.path == "/api/v1/me/password" && (req.patch? || req.put?)
+      discriminate_user(req)
+    end
+  end
+
   throttle("ai", limit: 10, period: 1.minute) do |req|
     if req.path.start_with?("/api/v1/ai") && req.post?
       discriminate_user(req)

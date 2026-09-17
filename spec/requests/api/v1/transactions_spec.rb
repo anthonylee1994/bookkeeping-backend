@@ -18,6 +18,16 @@ RSpec.describe "Transactions", type: :request do
     expect(json.dig("meta", "total")).to eq(1)
   end
 
+  it "matches transactions by merchant name in the search query" do
+    merchant = create(:merchant, user: user, name: "Starbucks")
+    create(:transaction, user: user, account: account, merchant: merchant, note: "coffee")
+    create(:transaction, user: user, account: account, note: "unrelated")
+    get "/api/v1/transactions?q=starbucks", headers: headers
+    expect(response).to have_http_status(:ok)
+    expect(json.dig("meta", "total")).to eq(1)
+    expect(json.dig("data", 0, "merchant_id")).to eq(merchant.id)
+  end
+
   it "rejects invalid transfers" do
     create_transaction(kind: "transfer", category_id: "bad")
     expect(response).to have_http_status(:unprocessable_content)

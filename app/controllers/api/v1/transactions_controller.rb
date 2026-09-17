@@ -8,7 +8,10 @@ module Api
         transactions = transactions.where(occurred_at: parse_time(params[:from])..parse_time(params[:to], end_of_day: true)) if params[:from].present? && params[:to].present?
         transactions = transactions.where(kind: params[:kind]) if params[:kind].present?
         %w[category_id account_id merchant_id].each { |field| transactions = transactions.where(field => params[field]) if params[field].present? }
-        transactions = transactions.where("note LIKE :q OR payment_method LIKE :q", q: "%#{ActiveRecord::Base.sanitize_sql_like(params[:q].to_s)}%") if params[:q].present?
+        if params[:q].present?
+          pattern = "%#{ActiveRecord::Base.sanitize_sql_like(params[:q].to_s)}%"
+          transactions = transactions.left_joins(:merchant).where("transactions.note LIKE :q OR transactions.payment_method LIKE :q OR merchants.name LIKE :q", q: pattern)
+        end
         transactions = transactions.where("amount_cents >= ?", params[:min_amount]) if params[:min_amount].present?
         transactions = transactions.where("amount_cents <= ?", params[:max_amount]) if params[:max_amount].present?
         sort = params[:sort].to_s

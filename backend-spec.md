@@ -283,7 +283,7 @@
 
 | Method | Path                          | 說明                                                                                                                                                 |
 | ------ | ----------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------- |
-| GET    | `/transactions`               | filter: `from, to, kind, category_id, account_id, merchant_id, q, min_amount, max_amount`；sort: `occurred_at, amount_cents, created_at`；pagination |
+| GET    | `/transactions`               | filter: `from, to, kind, category_id, account_id, merchant_id, q, min_amount, max_amount`（`q` 以 `LIKE` 比對 `note`、`payment_method`、merchant name）；sort: `occurred_at, amount_cents, created_at`；pagination |
 | POST   | `/transactions`               | create（支援 `Idempotency-Key`、可選 `image_urls`）                                                                                                  |
 | GET    | `/transactions/:id`           | show                                                                                                                                                 |
 | PATCH  | `/transactions/:id`           | update                                                                                                                                               |
@@ -668,6 +668,7 @@ Content-Type: application/json
 - [x] Refund 後原交易 `net_amount_cents` 正確
 - [x] 刪原交易後，關聯 refund 一齊消失
 - [x] 刪交易後 `GET /transactions` 真係冇嗰筆（hard delete）
+- [x] `q` 搵得到 merchant name（`left_joins(:merchant)` + `merchants.name LIKE`）
 - [x] Bullet 冇 N+1 warning
 
 ---

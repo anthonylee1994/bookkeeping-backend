@@ -20,7 +20,7 @@ RSpec.describe "Phase 6 dashboard and summaries", type: :request do
 
     expect(response).to have_http_status(:ok)
     data = json.fetch("data")
-    expect(data.values_at("income_cents", "expense_cents", "net_cents")).to eq([100_000, 50_000, 50_000])
+    expect(data.values_at("income_cents", "expense_cents", "net_cents")).to eq([ 100_000, 50_000, 50_000 ])
     expect(data.dig("transfers", "count")).to eq(1)
     expect(data.dig("transfers", "total_cents")).to eq(20_000)
     expect(data.dig("by_category", 0).fetch("expense_cents")).to eq(50_000)
@@ -89,10 +89,10 @@ RSpec.describe "Phase 6 dashboard and summaries", type: :request do
     get "/api/v1/dashboard", params: { date: "2026-09-14" }, headers: headers
     expect(response).to have_http_status(:ok)
     data = json.fetch("data")
-    expect(data.values_at("income_cents", "expense_cents", "net_cents")).to eq([10_000, 3_000, 7_000])
+    expect(data.values_at("income_cents", "expense_cents", "net_cents")).to eq([ 10_000, 3_000, 7_000 ])
     expect(data.fetch("recent_transactions").size).to eq(2)
     expect(data.fetch("recurring_reminders").size).to eq(1)
-    expect(data.dig("by_category", 0).values_at("income_cents", "expense_cents")).to eq([10_000, 3_000])
+    expect(data.dig("by_category", 0).values_at("income_cents", "expense_cents")).to eq([ 10_000, 3_000 ])
   end
 
   it "keeps dashboard query count flat as categories and accounts grow" do

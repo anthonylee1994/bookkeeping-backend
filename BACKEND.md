@@ -1,5 +1,7 @@
 # 記帳 App Rails API Backend Spec
 
+> **文件維護**：每次改完 code（任何行為、endpoint、schema、業務規則改動）都必須同步更新本文件及 `swagger/` OpenAPI；未更新 spec 嘅改動當未完成。
+
 ---
 
 ## 0. 概覽與假設
@@ -839,6 +841,7 @@ net_cents      = income_cents - net_expense
 - [x] WebMock + VCR mock DeepSeek 同 LIHKG
 - [x] `rswag` 產生 OpenAPI，掛 `/api-docs`
 - [x] Bullet 開喺 dev/test
+- [x] Dashboard／Summaries 聚合 query 固定唔隨 category／account 數量增長（query-count regression specs）
 - [x] Seed：admin user、預設分類、範例交易
 - [x] `Lograge` + JSON log + `request_id`
 - [x] `dokku checks:enable` + `/up`

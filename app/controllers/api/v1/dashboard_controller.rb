@@ -34,18 +34,22 @@ module Api
 
       def category_breakdown(scope)
         regular = scope.where.not(kind: :transfer)
-        regular.group(:category_id).select(:category_id).map do |row|
-          category = current_user.categories.find_by(id: row.category_id)
-          items = regular.where(category_id: row.category_id)
-          { category_id: row.category_id, name: category&.name, income_cents: items.where(kind: :income).sum(:amount_cents), expense_cents: items.where(kind: :expense).sum(:amount_cents) }
+        income_totals = regular.where(kind: :income).group(:category_id).sum(:amount_cents)
+        expense_totals = regular.where(kind: :expense).group(:category_id).sum(:amount_cents)
+        category_ids = income_totals.keys | expense_totals.keys
+        categories = current_user.categories.where(id: category_ids).index_by(&:id)
+        category_ids.map do |category_id|
+          { category_id: category_id, name: categories[category_id]&.name, income_cents: income_totals[category_id] || 0, expense_cents: expense_totals[category_id] || 0 }
         end.sort_by { |row| [ -row[:expense_cents], -row[:income_cents] ] }
       end
 
       def account_balances
-        current_user.accounts.order(:created_at).map do |account|
-          tx = current_user.transactions.where(account_id: account.id)
-          income = tx.where(kind: :income).sum(:amount_cents)
-          expense = tx.where(kind: :expense).sum(:amount_cents)
+        accounts = current_user.accounts.order(:created_at)
+        income_totals = current_user.transactions.where(kind: :income).group(:account_id).sum(:amount_cents)
+        expense_totals = current_user.transactions.where(kind: :expense).group(:account_id).sum(:amount_cents)
+        accounts.map do |account|
+          income = income_totals[account.id] || 0
+          expense = expense_totals[account.id] || 0
           { id: account.id, name: account.name, currency: account.currency, initial_balance_cents: account.initial_balance_cents, balance_cents: account.initial_balance_cents + income - expense }
         end
       end

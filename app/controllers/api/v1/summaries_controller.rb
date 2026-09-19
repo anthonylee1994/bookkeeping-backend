@@ -54,18 +54,22 @@ module Api
       end
 
       def by_category(scope)
-        scope.group(:category_id).select(:category_id).map do |row|
-          category = current_user.categories.find_by(id: row.category_id)
-          items = scope.where(category_id: row.category_id)
-          { category_id: row.category_id, name: category&.name, income_cents: items.where(kind: :income).sum(:amount_cents), expense_cents: items.where(kind: :expense).sum(:amount_cents) }
+        income_totals = scope.where(kind: :income).group(:category_id).sum(:amount_cents)
+        expense_totals = scope.where(kind: :expense).group(:category_id).sum(:amount_cents)
+        category_ids = income_totals.keys | expense_totals.keys
+        categories = current_user.categories.where(id: category_ids).index_by(&:id)
+        category_ids.map do |category_id|
+          { category_id: category_id, name: categories[category_id]&.name, income_cents: income_totals[category_id] || 0, expense_cents: expense_totals[category_id] || 0 }
         end.sort_by { |row| [ -row[:expense_cents], -row[:income_cents] ] }
       end
 
       def by_account(scope)
-        scope.group(:account_id).select(:account_id).map do |row|
-          account = current_user.accounts.find_by(id: row.account_id)
-          items = scope.where(account_id: row.account_id)
-          { account_id: row.account_id, name: account&.name, income_cents: items.where(kind: :income).sum(:amount_cents), expense_cents: items.where(kind: :expense).sum(:amount_cents) }
+        income_totals = scope.where(kind: :income).group(:account_id).sum(:amount_cents)
+        expense_totals = scope.where(kind: :expense).group(:account_id).sum(:amount_cents)
+        account_ids = income_totals.keys | expense_totals.keys
+        accounts = current_user.accounts.where(id: account_ids).index_by(&:id)
+        account_ids.map do |account_id|
+          { account_id: account_id, name: accounts[account_id]&.name, income_cents: income_totals[account_id] || 0, expense_cents: expense_totals[account_id] || 0 }
         end
       end
 

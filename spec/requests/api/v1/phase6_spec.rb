@@ -94,4 +94,42 @@ RSpec.describe "Phase 6 dashboard and summaries", type: :request do
     expect(data.fetch("recurring_reminders").size).to eq(1)
     expect(data.dig("by_category", 0).values_at("income_cents", "expense_cents")).to eq([10_000, 3_000])
   end
+
+  it "keeps dashboard query count flat as categories and accounts grow" do
+    create_transaction(kind: :expense, amount_cents: 1_000, category: category)
+    second_account = create(:account, user: user, name: "Account B")
+    create_transaction(kind: :income, amount_cents: 2_000, account: second_account)
+
+    baseline = count_queries { get "/api/v1/dashboard", params: { date: "2026-09-14" }, headers: headers }
+    expect(response).to have_http_status(:ok)
+
+    4.times do |i|
+      extra_category = create(:category, user: user, name: "Food #{i}", kind: :expense)
+      extra_account = create(:account, user: user, name: "Account #{i}")
+      create_transaction(kind: :expense, amount_cents: 1_000 + i, category: extra_category, account: extra_account)
+    end
+
+    grown = count_queries { get "/api/v1/dashboard", params: { date: "2026-09-14" }, headers: headers }
+    expect(response).to have_http_status(:ok)
+    expect(grown).to eq(baseline)
+  end
+
+  it "keeps summary query count flat as categories and accounts grow" do
+    create_transaction(kind: :expense, amount_cents: 1_000, category: category)
+    second_account = create(:account, user: user, name: "Account B")
+    create_transaction(kind: :income, amount_cents: 2_000, account: second_account)
+
+    baseline = count_queries { get "/api/v1/summaries/monthly", params: { date: "2026-09-14" }, headers: headers }
+    expect(response).to have_http_status(:ok)
+
+    4.times do |i|
+      extra_category = create(:category, user: user, name: "Food #{i}", kind: :expense)
+      extra_account = create(:account, user: user, name: "Account #{i}")
+      create_transaction(kind: :expense, amount_cents: 1_000 + i, category: extra_category, account: extra_account)
+    end
+
+    grown = count_queries { get "/api/v1/summaries/monthly", params: { date: "2026-09-14" }, headers: headers }
+    expect(response).to have_http_status(:ok)
+    expect(grown).to eq(baseline)
+  end
 end

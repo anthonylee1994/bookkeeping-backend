@@ -1,6 +1,8 @@
 require "spec_helper"
 ENV["RAILS_ENV"] ||= "test"
 ENV["JWT_SECRET"] ||= "test-jwt-secret"
+# DeepSeek calls are stubbed with WebMock; the service only needs the key to be present.
+ENV["DEEPSEEK_API_KEY"] ||= "test-deepseek-key"
 require_relative "../config/environment"
 abort("The Rails environment is running in production mode!") if Rails.env.production?
 require "rspec/rails"

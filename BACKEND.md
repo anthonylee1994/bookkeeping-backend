@@ -843,7 +843,7 @@ net_cents      = income_cents - net_expense
 - [x] Bullet 開喺 dev/test
 - [x] Dashboard／Summaries 聚合 query 固定唔隨 category／account 數量增長（query-count regression specs）
 - [x] Brakeman：`config/brakeman.ignore` 記錄 3 個 `:account_id` PermitAttributes false positive（實際由 model-level ownership validation 擋；CI 用 `bin/brakeman -i config/brakeman.ignore`）
-- [x] GitHub Actions（`.github/workflows/ci.yml`）：test job 跑 `bin/rails db:test:prepare` + `bundle exec rspec`
+- [x] GitHub Actions（`.github/workflows/ci.yml`）：test job 跑 `bin/rails db:test:prepare` + `bundle exec rspec`；`spec/rails_helper.rb` 提供 test 用 `DEEPSEEK_API_KEY`／`JWT_SECRET` 預設，唔依賴 `.env`
 - [x] Seed：admin user、預設分類、範例交易
 - [x] `Lograge` + JSON log + `request_id`
 - [x] `dokku checks:enable` + `/up`

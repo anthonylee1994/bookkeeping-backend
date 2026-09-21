@@ -1,0 +1,4 @@
+[alias]
+loco = "run --"
+
+playground = "run --example playground"

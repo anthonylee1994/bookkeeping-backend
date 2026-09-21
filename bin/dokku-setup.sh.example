@@ -1,40 +1,30 @@
 #!/usr/bin/env bash
-# Copy to bin/dokku-setup.sh and fill in secrets. bin/dokku-setup.sh is gitignored.
+# Copy to bin/dokku-setup.sh (gitignored) and fill in secrets before running.
 set -euo pipefail
 
-APP="${APP:-bookkeeping-backend}"
-DOMAIN="${DOMAIN:-book-api.on99.app}"
-STORAGE_HOST="${STORAGE_HOST:-/var/lib/dokku/data/storage/${APP}}"
-CERT_TAR="${CERT_TAR:-/root/certs/on99.app.tar}"
+APP=bookkeeping-backend
 
-dokku apps:exists "$APP" || dokku apps:create "$APP"
-
+dokku apps:create "$APP" || true
 dokku storage:ensure-directory "$APP"
-if ! dokku storage:list "$APP" | grep -q "/app/storage"; then
-	dokku storage:mount "$APP" "${STORAGE_HOST}:/app/storage"
-fi
-
-dokku domains:set "$APP" "$DOMAIN"
-dokku certs:add "$APP" <"$CERT_TAR"
-
+dokku storage:mount "$APP" "/var/lib/dokku/data/storage/$APP/storage:/app/storage"
+dokku domains:set "$APP" book-api.on99.app
+dokku certs:add "$APP" < /root/certs/on99.app.tar
 dokku checks:enable "$APP"
 dokku checks:set "$APP" web.wait-to-retire 30
 dokku checks:set "$APP" web.initial-delay 10
-
-dokku config:set "$APP" \
-	RAILS_ENV=production \
-	RAILS_MASTER_KEY="${RAILS_MASTER_KEY:?set RAILS_MASTER_KEY}" \
-	SECRET_KEY_BASE="${SECRET_KEY_BASE:?set SECRET_KEY_BASE}" \
-	JWT_SECRET="${JWT_SECRET:?set JWT_SECRET}" \
-	CORS_ORIGINS="${CORS_ORIGINS:-https://app.on99.app}" \
-	LIHKG_UPLOAD_URL="${LIHKG_UPLOAD_URL:-https://img.eservice-hk.net/api.php?version=2}" \
-	LIHKG_ALLOWED_HOSTS="${LIHKG_ALLOWED_HOSTS:-img.eservice-hk.net}" \
-	DEEPSEEK_API_KEY="${DEEPSEEK_API_KEY:?set DEEPSEEK_API_KEY}" \
-	DEEPSEEK_MODEL="${DEEPSEEK_MODEL:-deepseek-flash}" \
-	DEEPSEEK_VISION_ENABLED="${DEEPSEEK_VISION_ENABLED:-true}" \
-	TZ=Asia/Hong_Kong \
-	RECURRING_BACKFILL_ENABLED="${RECURRING_BACKFILL_ENABLED:-false}" \
-	RECURRING_BACKFILL_MAX_DAYS="${RECURRING_BACKFILL_MAX_DAYS:-90}" \
-	AI_CACHE_HOURS="${AI_CACHE_HOURS:-24}"
-
+dokku config:set --no-restart "$APP" \
+  LOCO_ENV=production \
+  BINDING=0.0.0.0 \
+  DATABASE_URL='sqlite:///app/storage/production.sqlite3?mode=rwc' \
+  JWT_SECRET=... \
+  CORS_ORIGINS=https://book.on99.app \
+  LIHKG_UPLOAD_URL='https://img.eservice-hk.net/api.php?version=2' \
+  LIHKG_ALLOWED_HOSTS=img.eservice-hk.net \
+  DEEPSEEK_API_KEY=... \
+  DEEPSEEK_MODEL=deepseek-flash \
+  DEEPSEEK_VISION_ENABLED=true \
+  TZ=Asia/Hong_Kong \
+  RECURRING_BACKFILL_ENABLED=false \
+  RECURRING_BACKFILL_MAX_DAYS=90 \
+  AI_CACHE_HOURS=24
 dokku ps:scale "$APP" web=1

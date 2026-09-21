@@ -1,0 +1,35 @@
+logger:
+  enable: true
+  pretty_backtrace: false
+  level: <%= get_env(name="LOG_LEVEL", default="info") %>
+  format: json
+
+server:
+  port: <%= get_env(name="PORT", default="3000") %>
+  binding: <%= get_env(name="BINDING", default="0.0.0.0") %>
+  host: <%= get_env(name="APP_HOST", default="https://book-api.on99.app") %>
+  middlewares:
+    limit_payload:
+      body_limit: "12MB"
+
+workers:
+  mode: BackgroundAsync
+
+mailer:
+  stub: true
+
+database:
+  uri: <%= get_env(name="DATABASE_URL", default="sqlite:///app/storage/production.sqlite3?mode=rwc") %>
+  enable_logging: false
+  connect_timeout: 500
+  idle_timeout: 500
+  min_connections: 1
+  max_connections: 5
+  auto_migrate: true
+  dangerously_truncate: false
+  dangerously_recreate: false
+
+auth:
+  jwt:
+    secret: <%= get_env(name="JWT_SECRET") %>
+    expiration: 604800

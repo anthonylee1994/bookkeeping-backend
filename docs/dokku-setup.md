@@ -1,19 +1,8 @@
-# Dokku setup
+# Dokku 部署（loco.rs / Rust）
 
-Placeholder runbook for deploying `bookkeeping-backend` to Dokku.
+App name：`bookkeeping-backend`，用 Dockerfile buildpack（multi-stage Rust build）。
 
-Do **not** put secrets in this file. Copy `bin/dokku-setup.sh.example` to
-`bin/dokku-setup.sh` (gitignored) or write machine-specific notes in
-`docs/dokku-setup.local.md` (also gitignored).
-
-## App
-
-- App name: `bookkeeping-backend`
-- Domain: `book-api.on99.app`
-- Process: web only (no worker)
-- SQLite files: `/app/storage` (Dokku storage mount)
-
-## One-time host commands
+## 首次設定
 
 ```bash
 dokku apps:create bookkeeping-backend
@@ -24,17 +13,16 @@ dokku certs:add bookkeeping-backend < /root/certs/on99.app.tar
 dokku checks:enable bookkeeping-backend
 dokku checks:set bookkeeping-backend web.wait-to-retire 30
 dokku checks:set bookkeeping-backend web.initial-delay 10
-dokku config:set bookkeeping-backend \
-  RAILS_ENV=production \
-  RAILS_MASTER_KEY=... \
-  SECRET_KEY_BASE=... \
+dokku config:set --no-restart bookkeeping-backend \
+  LOCO_ENV=production \
+  BINDING=0.0.0.0 \
+  DATABASE_URL='sqlite:///app/storage/production.sqlite3?mode=rwc' \
   JWT_SECRET=... \
-  CORS_ORIGINS=https://app.on99.app \
-  LIHKG_UPLOAD_URL=https://img.eservice-hk.net/api.php?version=2 \
+  CORS_ORIGINS=https://book.on99.app \
+  LIHKG_UPLOAD_URL='https://img.eservice-hk.net/api.php?version=2' \
   LIHKG_ALLOWED_HOSTS=img.eservice-hk.net \
   DEEPSEEK_API_KEY=... \
   DEEPSEEK_MODEL=deepseek-flash \
-  DEEPSEEK_VISION_ENABLED=true \
   TZ=Asia/Hong_Kong \
   RECURRING_BACKFILL_ENABLED=false \
   RECURRING_BACKFILL_MAX_DAYS=90 \
@@ -42,34 +30,29 @@ dokku config:set bookkeeping-backend \
 dokku ps:scale bookkeeping-backend web=1
 ```
 
-## Deploy
+或者抄 `bin/dokku-setup.sh.example` 做 `bin/dokku-setup.sh`（已 gitignore）再改 secrets。
 
-From this repo:
+## 部署
 
 ```bash
-git remote add dokku dokku@<host>:bookkeeping-backend
 git push dokku main
 ```
 
-`Procfile` `release` runs `db:prepare` + `db:migrate`. Health check is `GET /up`.
+`docker-entrypoint.sh` 會先 `bookkeeping-backend-cli db migrate` 再 `start`，所以唔使另設 release process。
 
-## Verify
+## 運維
+
+- Host cron 每日跑：
+  - `dokku run bookkeeping-backend ./bookkeeping-backend-cli task maintenance:cleanup`
+  - `scripts/backup.sh`
+- SQLite 檔案全部喺 `/app/storage`（primary：`production.sqlite3`）。
+- 只有 web process，冇 worker（recurring 用 request-time catch-up）。
+
+## 檢查
 
 ```bash
-dokku storage:list bookkeeping-backend
+dokku logs bookkeeping-backend -t
 dokku enter bookkeeping-backend web ls -la /app/storage
-# expect production.sqlite3 + production_cache.sqlite3
 curl -fsS https://book-api.on99.app/up
+curl -fsS https://book-api.on99.app/health
 ```
-
-## Host cron (Phase 7)
-
-Backup + idempotency cleanup are host cron, not an in-app worker:
-
-```cron
-0 3 * * * dokku run bookkeeping-backend bin/rails maintenance:cleanup
-0 4 * * * /path/to/bookkeeping-backend/scripts/backup.sh
-```
-
-The backup script keeps timestamped `production` and `production_cache` SQLite
-snapshots under `/app/storage/backups` and removes snapshots older than 7 days.

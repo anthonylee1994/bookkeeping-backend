@@ -1,5 +1,8 @@
 # 5. Phases
 
+> **注意**：Phase 0–7 記錄嘅係**原 Rails 8 實作**嘅驗收歷史，仍然有效（行為要一致）。
+> 2026-09-21 已 rewrite 成 loco.rs，語言／工具嘅等效對照見最尾 **Phase R**。
+
 ### Phase 0：專案初始化 + Dokku 準備
 
 **目標**：Rails 8 API-only 骨架、Dokku app、SQLite persistent storage。
@@ -423,3 +426,68 @@ dokku run bookkeeping-backend sh -c '
 - [x] `dokku logs bookkeeping-backend -t` 見到 structured log + request_id
 - [x] Backup script 跑完見到 2 個 db backup
 - [x] `dokku ps:report bookkeeping-backend` 只有 web process
+
+---
+
+### Phase R：Rails → loco.rs (Rust) rewrite（2026-09-21）
+
+**目標**：行為、API contract、DB schema 100% 不變，技術棧換成 loco.rs。分支 `loco-rewrite`。
+
+**對照表**
+
+| 原 Rails 元件 | loco.rs 對應 |
+| ------------- | ------------ |
+| `app/models/*.rb` | `src/models/_entities/*.rs`（SeaORM entity）+ `src/models/users.rs` |
+| `ApplicationRecord` UUID PK | entity `id: String`，插入時 `util::new_id()` |
+| `app/controllers/api/v1/*` | `src/controllers/*.rs`（axum handlers，`ApiResult<Response>`） |
+| `ApplicationController#authenticate_user!` | `src/api/extract.rs` `AuthUser` extractor |
+| `catch_up_recurring` before_action | `AuthUser` extractor 內 `services::recurring::catch_up` |
+| 統一錯誤格式 | `src/api/error.rs` `ApiError` |
+| Pagy | `src/api/util.rs` clamp + 手砌 meta |
+| Rack::Attack | `src/middleware/rate_limit.rs` |
+| CORS initializer | `src/middleware/cors.rs` |
+| Lograge + request_id | `src/api/request_id.rs` + loco JSON logger |
+| `has_secure_password`（bcrypt） | `src/api/auth.rs` bcrypt（verify `$2a$` 相容） |
+| `JsonWebToken` | `src/api/auth.rs` jsonwebtoken HS256，唔驗 exp |
+| `RecurringRuleCalculator` / `RecurringCatchUp` | `src/services/recurring.rs` |
+| `DeepSeekService` | `src/services/deepseek.rs` |
+| `LihkgUploadService` | `src/services/lihkg.rs` |
+| `lib/tasks/maintenance.rake` | `src/tasks/maintenance.rs`（`bookkeeping-backend-cli task maintenance:cleanup`） |
+| `db/migrate/*` | `migration/src/m20260921000000_init.rs`（同 schema 一致） |
+| rswag `/api-docs` | `src/controllers/docs.rs` 回 `swagger/v1/swagger.yaml` |
+| `rails s` | `cargo loco start` |
+| `bundle exec rspec` | `cargo test` |
+| Dokku Rails buildpack | Dokku Dockerfile（Rust multi-stage） |
+
+**驗收**
+
+- [x] `cargo test` 全綠（12 unit + 61 integration）
+- [x] `cargo fmt --all` 同 `cargo clippy --all-targets -- -D warnings` 乾淨
+- [x] SQLite schema（欄位、index、FK on_delete）同 Rails `db/schema.rb` 一致
+- [x] API response 格式（`data` / `meta` / `error`）同 Rails 一致
+- [x] JWT 用 HS256、payload `user_id`、唔寫唔驗 `exp`
+- [x] 舊 Rails bcrypt 密碼可以登入
+- [x] `GET /health/db` 確認 WAL；`/api-docs` 見到 OpenAPI
+
+**測試遷移（原 `spec/` → `tests/`）**
+
+原本 Rails RSpec 嘅案例已 port 成 Rust：
+
+| Rails spec | Rust test |
+| ---------- | --------- |
+| `spec/requests/api/v1/auth_spec.rb` | `tests/requests/auth_spec.rs`（register/login/absent sessions） |
+| `spec/requests/api/v1/me_spec.rb` | `tests/requests/auth_spec.rs`（me + PATCH password） |
+| `spec/requests/api/v1/accounts_spec.rb` | `tests/requests/accounts_spec.rs` |
+| `spec/requests/api/v1/categories_spec.rb` | `tests/requests/categories_spec.rs` |
+| `spec/requests/api/v1/merchants_spec.rb` | `tests/requests/merchants_spec.rs` |
+| `spec/requests/api/v1/transactions_spec.rb` | `tests/requests/transactions_spec.rs` |
+| `spec/requests/api/v1/recurring_rules_spec.rb` | `tests/requests/recurring_spec.rs` |
+| `spec/requests/api/v1/phase5_spec.rb`（AI/LIHKG） | `tests/requests/ai_spec.rs`（wiremock 代替 WebMock） |
+| `spec/requests/api/v1/phase6_spec.rb`（dashboard/summaries） | `tests/requests/summaries_spec.rs` |
+| `spec/requests/up_spec.rb`、`spec/requests/api_docs_spec.rb` | `tests/requests/health_spec.rs` |
+| `spec/tasks/maintenance_spec.rb` | `tests/requests/health_spec.rs` |
+| `spec/services/json_web_token_spec.rb` | `src/api/auth.rs` `#[cfg(test)]` |
+| `spec/services/recurring_rule_calculator_spec.rb` | `src/services/recurring.rs` `#[cfg(test)]` |
+| `spec/models/*_spec.rb` | 由對應 request spec + DB helpers 覆蓋 |
+
+> 未 port：`spec/config/phase0_spec.rb`（Rails 專屬設定）同 query-count / N+1 regression 兩個測試（Rust 版聚合查詢數固定，冇現成 query counter；見 `03-business-rules`）。

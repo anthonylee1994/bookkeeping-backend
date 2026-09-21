@@ -1,0 +1,13 @@
+pub mod accounts;
+pub mod ai;
+pub mod auth;
+pub mod categories;
+pub mod dashboard;
+pub mod docs;
+pub mod health;
+pub mod me;
+pub mod merchants;
+pub mod receipts;
+pub mod recurring_rules;
+pub mod summaries;
+pub mod transactions;

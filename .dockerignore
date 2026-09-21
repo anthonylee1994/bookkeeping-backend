@@ -1,58 +1,12 @@
-# See https://docs.docker.com/engine/reference/builder/#dockerignore-file for more about ignoring files.
-
-# Ignore git directory.
-/.git/
-/.gitignore
-
-# Ignore bundler config.
-/.bundle
-
-# Ignore all environment files (keep example for reference; not needed in image).
-/.env*
-
-# Ignore all default key files.
-/config/*.key
-/config/credentials/*.key
-
-# Ignore all logfiles and tempfiles.
-/log/*
-/tmp/*
-!/log/.keep
-!/tmp/.keep
-
-# Ignore pidfiles, but keep the directory.
-/tmp/pids/*
-!/tmp/pids/
-!/tmp/pids/.keep
-
-# Ignore storage (uploaded files in development and any SQLite databases).
-/storage/*
-!/storage/.keep
-/tmp/storage/*
-!/tmp/storage/
-!/tmp/storage/.keep
-
-# Ignore sqlite DBs
-/db/*.sqlite3
-/db/*.sqlite3-*
-
-# Ignore CI / editor files.
-/.github
-/.idea
-/.vscode
-
-# Ignore Kamal files.
-/config/deploy.yml
-/.kamal
-
-# Ignore development files
-/.devcontainer
-
-# Ignore Docker-related files
-/.dockerignore
-/Dockerfile*
-/compose*.yml
-
-# Ignore tests (not needed at runtime)
-/spec
-/test
+target
+.git
+.github
+storage
+log
+tmp
+coverage
+node_modules
+*.sqlite3
+*.sqlite3-wal
+*.sqlite3-shm
+.env

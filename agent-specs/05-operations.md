@@ -1,15 +1,17 @@
 # 6. 環境變數範例
 
 ```bash
-# Rails
-RAILS_ENV=production
-RAILS_MASTER_KEY=...
-SECRET_KEY_BASE=...
-RAILS_LOG_TO_STDOUT=true
+# Runtime environment
+LOCO_ENV=production
 
-# DB（全部喺 /app/storage）
-DATABASE_URL=sqlite3:///app/storage/production.sqlite3
-CACHE_DATABASE_URL=sqlite3:///app/storage/production_cache.sqlite3
+# Server
+PORT=3000
+BINDING=0.0.0.0
+LOG_LEVEL=info
+
+# DB（SQLite 喺 /app/storage）
+DATABASE_URL=sqlite:///app/storage/production.sqlite3?mode=rwc
+DB_MAX_CONNECTIONS=5
 
 # Auth
 JWT_SECRET=...
@@ -29,13 +31,15 @@ DEEPSEEK_API_KEY=...
 DEEPSEEK_BASE_URL=https://api.deepseek.com
 DEEPSEEK_MODEL=deepseek-flash
 DEEPSEEK_VISION_ENABLED=true
+AI_CACHE_HOURS=24
 
 # 業務
 TZ=Asia/Hong_Kong
 RECURRING_BACKFILL_ENABLED=false
 RECURRING_BACKFILL_MAX_DAYS=90
-AI_CACHE_HOURS=24
 ```
+
+> Dev 用 `dotenvy` load 專案根目錄 `.env`（唔 override 已存在 env）。Prod 用 `dokku config:set`。
 
 ---
 
@@ -56,7 +60,7 @@ AI_CACHE_HOURS=24
 
 `render_error` 會喺 `details` 有值時先加 `details`；`request_id` 一律附上。
 
-`request_id` 由 `ActionDispatch::RequestId` middleware 產生，喺 `ApplicationController` rescue_from 時帶入。
+`request_id` 由 `src/api/request_id.rs` middleware 產生（讀入 `X-Request-Id`，否則新 UUID），用 tokio task-local 傳畀 `ApiError`，並喺 response 加返 `X-Request-Id` header。
 
 ---
 
@@ -74,85 +78,62 @@ AI_CACHE_HOURS=24
 }
 ```
 
-Pagy 預設回 `page, items, count, pages`，要自己 map 做上面格式。
+`per_page` clamp 1..100（預設 25）。
 
 ---
 
 # 9. Dokku 部署 Checklist
 
-- [ ] `Dockerfile` 用 Rails 8 預設，`EXPOSE 3000`
-- [ ] `Procfile` 有 `release` task 跑 migration
+- [ ] `Dockerfile` multi-stage Rust build，`EXPOSE 3000`，CMD 跑 `docker-entrypoint.sh`
+- [ ] `docker-entrypoint.sh` 先 `db migrate` 再 `start`
 - [ ] `dokku storage:mount` 將 `/app/storage` 掛出去
-- [ ] `dokku config:set` 所有 ENV
+- [ ] `dokku config:set` 所有 ENV（見 #6）
 - [ ] `dokku domains:set bookkeeping-backend book-api.on99.app`
 - [ ] `dokku certs:add bookkeeping-backend < /root/certs/on99.app.tar`
 - [ ] `dokku checks:enable` + `web.wait-to-retire 30` + `web.initial-delay 10`
 - [ ] `dokku ps:scale bookkeeping-backend web=1`（**冇 worker**）
-- [ ] Host cron 每日跑 backup + `rails maintenance:cleanup`
+- [ ] Host cron 每日跑 backup + `bookkeeping-backend-cli task maintenance:cleanup`
 - [ ] `dokku logs` 確認冇 error
-- [ ] `dokku enter bookkeeping-backend web ls -la /app/storage` 見到 primary + cache sqlite 檔
+- [ ] `dokku enter bookkeeping-backend web ls -la /app/storage` 見到 `production.sqlite3`
 - [ ] `dokku enter bookkeeping-backend web ls -la /app/storage/backups` 見到 backup
 
 ---
 
 # 10. 未確定事項 / 風險
 
-1. **DeepSeek vision 已 GA**：`deepseek-flash` 原生支援 image input，三種傳入方式（base64 / URL / file_id）。單張圖最多 384 tokens，定價同文字模型相同。舊名 `deepseek-v4-flash-vision-exp` 仍兼容但已路由到 `deepseek-flash`。
-2. **LIHKG API 非官方**：`img.eservice-hk.net` 唔係 LIHKG 官方 API，冇 SLA、冇文檔、可能隨時改。出站 upload **必須** `Origin: https://lihkg.com`，否則圖床會拒。已加 stoplight circuit breaker，但要有 fallback 圖床（S3 / R2）嘅 plan。
-3. **SQLite 併發**：而家得 web process 寫，風險細過 web+worker；WAL + busy_timeout 仍然要。Catch-up 喺 read request 寫入，單 user 可接受；高負載要轉 Postgres。
-4. **JWT 永久有效**：唔寫、唔驗證 `exp`；冇 UserSession，server **唔能** revoke 單張 token。Logout = frontend 刪本地 JWT。遺失 token 要 rotate `JWT_SECRET` 先全部作廢。
+1. **DeepSeek vision 已 GA**：`deepseek-flash` 原生支援 image input（base64 / URL / file_id）。單張圖最多 384 tokens。
+2. **LIHKG API 非官方**：`img.eservice-hk.net` 冇 SLA、冇文檔；出站 upload **必須** `Origin: https://lihkg.com`。已加自建 circuit breaker，但要有 fallback 圖床（S3 / R2）嘅 plan。
+3. **SQLite 併發**：得 web process 寫；WAL + busy_timeout 仍然要。Catch-up 喺 read request 寫入，單 user 可接受；高負載要轉 Postgres（改 SeaORM driver + DATABASE_URL）。
+4. **JWT 永久有效**：唔寫、唔驗證 `exp`；冇 UserSession，server **唔能** revoke 單張 token。遺失 token 要 rotate `JWT_SECRET`。
 5. **Dokku storage 單點**：冇 replication，靠 backup。
 6. **多貨幣**：而家只 HKD，將來加外幣要 exchange rate service。
-7. **Transfer 報表**：spec 只定義 summary 有 `transfers` key，詳細報表將來再補。
-8. **Recurring catch-up**：user 唔打 API 就唔會產生交易。呢個係故意。Backfill 預設關閉；若開啟，90 日上限係假設，要同 product 確認。
+7. **Transfer 報表**：spec 只定義 summary 有 `transfers` key。
+8. **Recurring catch-up**：user 唔打 API 就唔會產生交易（故意）。Backfill 預設關閉；90 日上限係假設。
 9. **Hard delete 唔可還原**：刪交易真係唔見；刪分類 / 商家只 nullify FK。帳戶有交易就刪唔到。
 10. **圖片 URL 持久性**：LIHKG URL 可能過期，將來要考慮 re-host 到 S3 / R2。
-11. **DeepSeek rate limit / cost**：未設 budget alert，將來要加。
+11. **密碼 hash**：新密碼用 bcrypt（新 hash 係 `$2b$`）；舊 Rails `$2a$` hash 直接 verify 得，無需 data migration。
 12. **AI JSON schema 嚴格度**：太嚴會令 partial 增加，太鬆會入錯數，要 collect 真實數據再 tune。
-13. **AI cache 簽名**：`parse_signature` 綁定 `PROMPT_VERSION` 同 user 分類名單；改名／加減分類或 bump prompt 都會 miss cache 並重新 call AI。
+13. **AI cache 簽名**：`parse_signature` 綁定 `PROMPT_VERSION` 同 user 分類名單；改名／加減分類或 bump prompt 都會 miss cache。
 
 ---
 
-# 附錄 A：DeepSeek Vision Request 範例
+# 附錄 A：DeepSeek Vision Request（Rust）
 
-```ruby
-# app/services/deep_seek_service.rb
-class DeepSeekService
-  def parse(image_base64:, content_type:)
-    body = {
-      model: ENV.fetch("DEEPSEEK_MODEL", "deepseek-flash"),
-      messages: [
-        {
-          role: "user",
-          content: [
-            {
-              type: "text",
-              text: <<~PROMPT
-                Extract transaction data from this receipt image.
-                Return ONLY valid JSON matching this schema:
-                {
-                  "amount_cents": integer,
-                  "kind": "income" | "expense",
-                  "occurred_at": ISO8601 string,
-                  "merchant_name": string | null,
-                  "category_hint": string | null,
-                  "note": string | null,
-                  "confidence": number (0-1)
-                }
-              PROMPT
-            },
-            {
-              type: "image_url",
-              image_url: { url: "data:#{content_type};base64,#{image_base64}" }
-            }
-          ]
-        }
-      ],
-      response_format: { type: "json_object" }
-    }
+實作：`src/services/deepseek.rs`。
 
-    response = connection.post("/chat/completions", body.to_json)
-    # parse, validate schema, log tokens/latency
-  end
-end
+```jsonc
+// POST {DEEPSEEK_BASE_URL}/chat/completions
+{
+  "model": "deepseek-flash",
+  "messages": [{
+    "role": "user",
+    "content": [
+      { "type": "text", "text": "<prompt + user categories>" },
+      { "type": "image_url", "image_url": { "url": "data:image/jpeg;base64,..." } }
+    ]
+  }],
+  "response_format": { "type": "json_object" }
+}
 ```
+
+回傳用括號平衡掃描抽 JSON object（揀最有 `amount_cents` 特徵嗰個），再手寫 schema 驗證；唔過就 `status = partial` 並保留 `raw_response` / `error_message`。

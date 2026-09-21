@@ -9,6 +9,7 @@ COPY Cargo.toml Cargo.lock ./
 COPY migration ./migration
 COPY src ./src
 COPY config ./config
+COPY swagger ./swagger
 RUN cargo build --release --bin bookkeeping-backend-cli
 
 FROM debian:bookworm-slim AS runtime

@@ -20,6 +20,7 @@
 - Recurring 用 **request-time catch-up**，唔用 background job / worker
 - Recurring backfill **預設關閉**；可選開啟，上限 90 日
 - 刪除一律 **hard delete**（唔用 soft delete / `discarded_at`）
+- **退款功能已於 2026-09-15 移除**：`transactions` 冇 `refund_of_id`、冇 `POST /transactions/:id/refund`；summary 冇 `refund_cents`（舊 refund 記錄已 migrate 成相反 kind 嘅普通交易）
 - JWT **所有 env 都唔 check exp**；token 唔寫 `exp`；**冇 UserSession**；logout 只係 frontend 刪 JWT
 - Auth **只用 username + password**，唔用 email
 - LIHKG 上傳 API 係**非官方**圖床（eservice-hk），唔保證穩定；出站 upload **必須**帶 `Origin: https://lihkg.com`（圖床會 check，缺或唔係呢個值會拒）
@@ -57,7 +58,8 @@
 | API Docs        | rswag                                                            |
 | N+1 檢測        | Bullet（dev/test）                                               |
 | 刪除            | hard delete（唔用 discard）                                      |
-| HTTP Client     | Faraday + faraday-retry                                          |
+| JSON 驗證       | json-schema（驗證 DeepSeek 回傳）                                |
+| HTTP Client     | Faraday + faraday-retry + faraday-multipart                      |
 | Circuit Breaker | stoplight                                                        |
 | ENV             | dotenv（dev）+ Dokku config（prod）                              |
 | 部署            | Dokku（Dockerfile）                                              |
@@ -115,6 +117,7 @@
 - `icon` string, nullable
 - `color` string, nullable
 - unique index `(user_id, kind, name)`
+- **冇** `position` 欄位；列表固定按 `(:kind, :created_at)` 排序
 - timestamps
 
 **刪除**：hard delete；所屬交易 `category_id` SET NULL（`on_delete: :nullify`）。
@@ -147,12 +150,12 @@
 - `note` text
 - `payment_method` string, nullable
 - `image_urls` json, default: `[]`（字串 array，記 LIHKG 等圖床 URL）
-- `source` enum：`manual / recurring / ai / import`
-- `refund_of_id` uuid FK self, nullable（`on_delete: :cascade`：刪原交易一齊刪退款）
+- `source` enum：`manual / recurring / ai / import`（DB 存 integer，default 0 = manual）
 - `transfer_account_id` uuid FK（kind=transfer 時用，`on_delete: :restrict`）
 - `idempotency_key` string, nullable（配合 IdempotencyKey table 使用）
 - timestamps
-- Index `(user_id, occurred_at)`, `(user_id, kind, occurred_at)`
+- Index `(user_id, occurred_at)`, `(user_id, kind, occurred_at)`, `(user_id, occurred_at, kind)`
+- **冇** `refund_of_id`（2026-09-15 移除退款功能）
 
 **驗證**：
 
@@ -160,6 +163,7 @@
 - transfer：`category_id` 必須 nil，`transfer_account_id` 必須存在且 != account_id
 - `amount_cents > 0`
 - `image_urls` 必須係 string array（可空）
+- `account` / `category` / `merchant` / `transfer_account` 必須屬於同一 user（model-level ownership validation）
 
 ### 2.6 RecurringRule
 
@@ -206,8 +210,9 @@
 
 - `id` uuid PK
 - `user_id` uuid FK, null: false, index
-- `image_urls` json, default: `[]`
-- `image_sha256` string, index
+- `image_urls` json, default: `[]`, null: false
+- `image_sha256` string, null: false, index
+- `parse_signature` string, nullable（= `Digest::SHA256.hexdigest(PROMPT_VERSION + user 分類名單)`；改名／加減分類或 bump prompt 都會令 cache 失效）
 - `provider` string, default: "deepseek"
 - `model` string, default: "deepseek-flash"
 - `tokens_in` integer
@@ -220,22 +225,23 @@
 - `transaction_id` uuid FK, nullable（`on_delete: :nullify`）
 - `idempotency_key` string, nullable
 - timestamps
+- Index `(user_id, image_sha256, created_at)` 同 `(user_id, image_sha256, parse_signature)`（cache lookup）
 
-**去重**：`(user_id, image_sha256)` 查最近一筆，若 24 小時內 `status = success` 就回傳 cache。
+**去重**：用 `image_sha256` + `parse_signature` 查最近一筆，若 24 小時（`AI_CACHE_HOURS`）內 `status = success` 就回傳 cache；cache hit 時仍會用當前 user 分類重新 normalize `category_hint`。
 
 ### 2.9 IdempotencyKey（獨立表）
 
 - `id` uuid PK
 - `user_id` uuid FK, null: false
 - `key` string, null: false
-- `request_hash` string（SHA256 of method + path + body）
+- `request_hash` string, null: false（SHA256 of method + path + body）
 - `response_status` integer
 - `response_body` text
 - `created_at` datetime
 - unique index `(user_id, key)`
 - index `created_at`（for daily maintenance）
 
-**用途**：`POST /transactions`、`POST /ai/confirm` 等支援 `Idempotency-Key` header。Host cron 每日清 > 24 小時（見 Phase 7 maintenance）。
+**用途**：`POST /transactions`、`POST /ai/confirm` 支援 `Idempotency-Key` header。同 key 且 24 小時內 → replay 當時 response；同 key 但 `request_hash` 唔同 → 422 `idempotency_conflict`。Host cron 每日清 > 24 小時（見 Phase 7 maintenance）。
 
 ---
 
@@ -290,21 +296,13 @@
 | GET    | `/transactions/:id`           | show                                                                                                                                                 |
 | PATCH  | `/transactions/:id`           | update                                                                                                                                               |
 | DELETE | `/transactions/:id`           | hard delete                                                                                                                                          |
-| POST   | `/transactions/:id/refund`    | 建立關聯退款（全額或部分）                                                                                                                           |
-| POST   | `/transactions/:id/duplicate` | 複製一筆                                                                                                                                             |
+| POST   | `/transactions/:id/duplicate` | 複製一筆（`occurred_at = now`）                                                                                                                       |
 
-**Refund request**：
-
-```json
-POST /api/v1/transactions/550e8400-e29b-41d4-a716-446655440000/refund
-{
-  "amount_cents": 5000,        // 可選，預設全額
-  "occurred_at": "2026-09-14T10:00:00+08:00",
-  "note": "商家退款"
-}
-```
-
-**Refund response**：回傳新建立嘅 refund transaction（`refund_of_id = "550e8400-e29b-41d4-a716-446655440000"`），同時回傳原交易嘅 `net_amount_cents`。
+- `from` / `to` **必須同時提供**才會 filter；`to` 會取當日 end-of-day（Asia/Hong_Kong）
+- sort 只接受 `occurred_at` / `amount_cents` / `created_at`，前置 `-` 為降序；其他值回落 `occurred_at`
+- `per_page` 上限 100（clamp），預設 25
+- `create` 成功會 `increment!(:usage_count)` 對應 merchant
+- `duplicate` 複製欄位，`occurred_at = now`，`source` 保持原值
 
 ### 3.6 Recurring Rules
 
@@ -329,11 +327,23 @@ POST /api/v1/transactions/550e8400-e29b-41d4-a716-446655440000/refund
 
 > **注意**：`/ai/parse` 只接受 whitelist host 嘅 URL（預設 `img.eservice-hk.net`），防 SSRF。唔用 Attachment model。
 
+**`/ai/parse`**：`{ "image_url": "https://..." }` → 回 `{ id, image_urls, sha256, status, parsed, suggested_category_id, raw_response, error, tokens_in, tokens_out, latency_ms }`。`status = failed` 回 502 `upstream_error`；`partial` 回 200。
+
+**`/ai/confirm`**：body 需帶 `ai_import_log_id`（或 `import_log_id`）＋ transaction 欄位；建 transaction（`source = ai`，`image_urls` 未提供時用 log 嘅），回填 `AiImportLog.transaction_id`。支援 `Idempotency-Key`。`receipts/upload` 成功回 201。
+
+> `ai/confirm` 同 `recurring_rules/:id/run_now` 回嘅 transaction payload 仍帶 legacy `net_amount_cents` key，等同 `amount_cents`（退款已移除）。
+
 ### 3.8 Dashboard
 
 | Method | Path         | 說明                                               |
 | ------ | ------------ | -------------------------------------------------- |
 | GET    | `/dashboard` | 總收入、總支出、淨額、最近交易、分類佔比、帳戶餘額 |
+
+- 可選 `?date=YYYY-MM-DD` 指定月份（預設當月，Asia/Hong_Kong）
+- `income_cents` / `expense_cents` / `net_cents` 只計該月（transfer 不計）
+- `by_category`：每行 `{ category_id, name, income_cents, expense_cents }`，按 expense 降序、再 income 降序
+- 餘額同時以 `accounts` 同 `account_balances` 兩個 key 回傳（每個 `{ id, name, currency, initial_balance_cents, balance_cents }`；balance = initial + income - expense，transfer 不計）
+- 7 日內到期嘅 active recurring rule 同時以 `upcoming_recurring` 同 `recurring_reminders` 回傳
 
 ### 3.9 Summaries
 
@@ -343,7 +353,7 @@ POST /api/v1/transactions/550e8400-e29b-41d4-a716-446655440000/refund
 | GET    | `/summaries/weekly?date=2026-09-14`  | 該週（Mon-Sun）   |
 | GET    | `/summaries/monthly?date=2026-09-14` | 該月（1 號-月末） |
 
-各期間都會回 `daily`（按香港時區逐日分組嘅淨收支，transfer 不計）；月報用嚟畫收支日曆。
+各期間都會回 `daily`（按香港時區逐日分組嘅淨收支，transfer 不計，只有 `{ date, net_cents }`）；月報用嚟畫收支日曆。`date` 參數預設今日（Asia/Hong_Kong）；`page` / `per_page`（上限 100）用於期內 `transactions` 分頁。
 
 **回應格式**：
 
@@ -353,20 +363,23 @@ POST /api/v1/transactions/550e8400-e29b-41d4-a716-446655440000/refund
     "range": { "from": "...", "to": "..." },
     "income_cents": 100000,
     "expense_cents": 50000,
-    "refund_cents": 5000,
     "net_cents": 55000,
     "daily": [
       { "date": "2026-09-14", "net_cents": 55000 }
     ],
     "by_category": [
-      { "category_id": "9b1deb4d-3b7d-4bad-9bdd-2b0d7b3dcb6d", "name": "飲食", "expense_cents": 30000, "refund_cents": 1000 }
+      { "category_id": "9b1deb4d-3b7d-4bad-9bdd-2b0d7b3dcb6d", "name": "飲食", "income_cents": 0, "expense_cents": 30000 }
     ],
-    "by_account": [...],
+    "by_account": [
+      { "account_id": "...", "name": "現金", "income_cents": 0, "expense_cents": 30000 }
+    ],
     "transfers": { "count": 3, "total_cents": 200000 },
     "transactions": { "data": [...], "meta": {...} }
   }
 }
 ```
+
+`by_category` 按 `expense_cents` 降序、再 `income_cents` 降序排列。
 
 ### 3.10 Health
 
@@ -378,6 +391,10 @@ POST /api/v1/transactions/550e8400-e29b-41d4-a716-446655440000/refund
 | GET    | `/health/deepseek` | DeepSeek ping         |
 | GET    | `/health/lihkg`    | LIHKG 圖床 ping       |
 
+- Health endpoint 全部喺 **root**（唔喺 `/api/v1`），唔經 `ApplicationController`、唔需要 JWT
+- 回 `{ status: "ok" | "error", checks: { ... } }`；任何 check 唔 ok → HTTP 503
+- DB check 讀 `PRAGMA journal_mode` 確認 WAL；DeepSeek check 打 `/models`；LIHKG check 打 `LIHKG_HEALTHCHECK_URL`（fallback `LIHKG_UPLOAD_URL`）並帶 `Origin: https://lihkg.com`
+
 ---
 
 ## 4. 業務規則
@@ -386,37 +403,39 @@ POST /api/v1/transactions/550e8400-e29b-41d4-a716-446655440000/refund
 2. **時區**：全 app `Asia/Hong_Kong`。`config.time_zone = "Asia/Hong_Kong"`；`ActiveRecord::Base.default_timezone = :local`（Rails 只接受 `:utc` / `:local`，靠 OS `TZ=Asia/Hong_Kong` 令 local = Hong Kong）。DB 讀寫 **唔轉 UTC**。顯示同計算（summary、recurring catch-up、日/週/月邊界）一律用 `Time.zone`（Hong Kong）
 3. **Weekly**：Asia/Hong_Kong Mon 00:00:00 至 Sun 23:59:59.999999
 4. **Monthly**：Asia/Hong_Kong 1 號 00:00:00 至月末 23:59:59.999999
-5. **Transfer**：唔計入 income/expense summary；獨立 `transfers` key
+5. **Transfer**：唔計入 income/expense summary；獨立 `transfers` key；亦唔計入帳戶餘額（`account_balances` 只計 income/expense）
 6. **Recurring 產生邏輯**（request-time catch-up，**唔用 background job**）：
 
 - 已 authenticate 嘅 request 開頭呼叫 `RecurringCatchUp.call(user: current_user)`（`Time.use_zone("Asia/Hong_Kong")`）
-- 跳過：Auth、Health
+- 跳過：`AuthController`（`skip_before_action`）、`HealthController`（唔繼承 `ApplicationController`）
 - 只處理該 user `status = active` 且 `next_run_at <= now` 嘅 rule
 - 用 `RecurringOccurrence` unique index 保證 idempotent；併發 request 撞 unique → rescue 當已處理
 - 產生後 `last_run_at = now`，`next_run_at = 下次`
 - 若 `end_on` 已過 → status = ended
 - **Backfill 規則**：
-  - `RECURRING_BACKFILL_ENABLED=false`（預設）：user 幾耐冇開 app 都只產生「今日」一筆，中間 occurrence 寫 RecurringOccurrence 但 `transaction_id = nil`
-  - `RECURRING_BACKFILL_ENABLED=true`：補最多 `RECURRING_BACKFILL_MAX_DAYS`（預設 90）日，超過就 skip 並 log
+  - `RECURRING_BACKFILL_ENABLED=false`（預設）：只 materialize 最後一個 due occurrence（即「今日」），其餘 due occurrence 寫 RecurringOccurrence 但 `transaction_id = nil`
+  - `RECURRING_BACKFILL_ENABLED=true`：補最多 `RECURRING_BACKFILL_MAX_DAYS`（預設 90）日，較早嘅 occurrence 只寫 occurrence，超出上限就 skip 並 log warning
   - 無論開唔開，每個 due occurrence 都會寫 RecurringOccurrence，避免重複
 - 刪咗由 recurring 產生嘅 transaction：occurrence 保留、`transaction_id = nil`，**唔會**再為該日自動產生
 - `run_now`：若該 `occurred_on` 未有 transaction，補建並關聯；已有 → 409 `already_materialized`
 - `skip_next`：為下一次寫 RecurringOccurrence（`transaction_id = nil`），推進 `next_run_at`
 
-1. **刪除分類**：hard delete；交易保留，`category_id` SET NULL
-2. **刪除帳戶**：若有任何交易（含作 transfer 目標）或 RecurringRule → 422 `account_in_use`；否則 hard delete
-3. **刪除交易**：hard delete。指向佢嘅 refund 一齊刪（`dependent: :destroy`）。若 `source = recurring`，對應 RecurringOccurrence.transaction_id SET NULL，唔再生該 occurrence
-4. **刪除商家**：hard delete；交易 `merchant_id` SET NULL
-5. **刪除 RecurringRule**：hard delete；已產生 transaction 保留；occurrences cascade delete
-6. **AI 解析流程**：
+7. **刪除分類**：hard delete；交易保留，`category_id` SET NULL
+8. **刪除帳戶**：若有任何交易（含作 transfer 目標）或 RecurringRule → 422 `account_in_use`；否則 hard delete
+9. **刪除交易**：hard delete；`RecurringOccurrence.transaction_id` 同 `AiImportLog.transaction_id` SET NULL，唔再生該 occurrence
+10. **刪除商家**：hard delete；交易 `merchant_id` SET NULL
+11. **刪除 RecurringRule**：hard delete；已產生 transaction 保留；occurrences cascade delete
+12. **AI 解析流程**：
 
 - 上傳 → LIHKG → 回 URL + sha256（唔落 DB）
-  - parse：whitelist host → sha256 查 AiImportLog 24 小時內成功記錄 → 有就回 cache
-  - 冇就：backend fetch 圖 → base64 inline → DeepSeek `deepseek-flash` vision
-  - 回傳 preview JSON（唔直接入帳）
-  - 用戶 confirm → 建立 transaction（`image_urls` + `source = ai`）+ AiImportLog.transaction_id
+- parse：whitelist host → 計 sha256 + `parse_signature`（= `PROMPT_VERSION` + 該 user 分類名單）→ 查 `AiImportLog` 24 小時內、同 sha256 同 signature 嘅 `status = success` 記錄 → 有就回 cache
+- 冇就：backend fetch 圖 → base64 inline → DeepSeek `deepseek-flash` vision
+- DeepSeek prompt 會帶入用戶現有分類（分 income／expense 列出），要求 model 逐字 copy，唔准翻譯或自創
+- 回傳 preview JSON（唔直接入帳）：`parsed`、`suggested_category_id`（category_hint 對得上當前 user 分類先有值，否則 nil）、`status`、`raw_response`、`error`、tokens、latency
+- 用戶 confirm → 建立 transaction（`image_urls` + `source = ai`）＋回填 `AiImportLog.transaction_id`
+- cache hit 時仍會用當前 user 分類重新 `normalize_category_hint`，確保唔會漏出 AI 自創嘅分類名
 
-1. **AI JSON schema**（用 JSON Schema 驗證）：
+13. **AI JSON schema**（用 `json-schema` gem 驗證；回傳唔符 schema → `status = partial`）：
 
 ```json
 {
@@ -434,21 +453,20 @@ POST /api/v1/transactions/550e8400-e29b-41d4-a716-446655440000/refund
 }
 ```
 
-1. **Idempotency-Key**：`POST /transactions` 同 `/ai/confirm` 支援，獨立 `IdempotencyKey` table，24 小時過期，host cron 每日清
-2. **重複交易偵測**：建立前 check 同日同商戶同金額，回 warning 但唔 block
-3. **退款**：
+14. **Idempotency-Key**：`POST /transactions` 同 `/ai/confirm` 支援，獨立 `IdempotencyKey` table，24 小時過期；同 key 但 `request_hash` 唔同 → 422 `idempotency_conflict`。host cron 每日清
+15. **Summary 計算**（transfer 唔計）：
 
-- `refund_of_id` 指向原交易
-  - `kind` 同原交易相同（expense 退 expense）
-  - `amount_cents` 正數
-  - Summary 用 `refund_cents` 欄位獨立統計，計算：
-    - `net_expense = expense_cents - refund_cents`
-    - `net_cents = income_cents - net_expense`
-  - `by_category` 各自顯示 `expense_cents` 同 `refund_cents`
+```ruby
+income_cents  = sum(kind: income)
+expense_cents = sum(kind: expense)
+net_cents     = income_cents - expense_cents
+```
 
-1. **SSRF 防護**：`/ai/parse` 只收 whitelist host 嘅 `image_url`（`ENV["LIHKG_ALLOWED_HOSTS"]`，預設 `img.eservice-hk.net`）；backend 自己 fetch。非 whitelist → 400
-2. **LIHKG 圖床風險**：用 stoplight circuit breaker，連續失敗 5 次開路 60 秒；失敗時回 502，log 詳細。出站 upload Faraday request **必須**帶 `Origin: https://lihkg.com`（硬編碼，圖床會 check Origin）
-3. **Pagy 上限**：`Pagy::DEFAULT[:max_per_page] = 100`
+`by_category` / `by_account` 各自回 `income_cents` 同 `expense_cents`。
+
+16. **SSRF 防護**：`/ai/parse` 只收 whitelist host 嘅 `image_url`（`ENV["LIHKG_ALLOWED_HOSTS"]`，預設 `img.eservice-hk.net`）；backend 自己 fetch。非 whitelist → 400 `validation_error`
+17. **LIHKG 圖床風險**：用 stoplight circuit breaker，連續失敗 `LIHKG_CIRCUIT_FAILURES` 次（預設 5）開路 `LIHKG_CIRCUIT_COOLDOWN` 秒（預設 60）；circuit open 或 upstream 失敗回 502 `upstream_error`，log 詳細。出站 upload Faraday request **必須**帶 `Origin: https://lihkg.com`（硬編碼，圖床會 check Origin）
+18. **分頁上限**：`Pagy::DEFAULT[:max_per_page] = 100`；transactions / summaries 直接 offset + limit，`per_page` clamp 1..100（預設 25）
 
 ---
 
@@ -460,23 +478,23 @@ POST /api/v1/transactions/550e8400-e29b-41d4-a716-446655440000/refund
 
 **任務**
 
-- [ ] `rails new bookkeeping_api --api --database=sqlite3 --skip-test --skip-action-mailer --skip-action-mailbox --skip-action-text --skip-active-storage`
-- [ ] 加 gem：`bcrypt`, `jwt`, `rack-cors`, `rack-attack`, `pagy`, `rswag`, `dotenv-rails`(dev), `bullet`(dev/test), `rspec-rails`, `factory_bot_rails`, `webmock`, `vcr`, `faraday`, `faraday-retry`, `stoplight`, `lograge`
-- [ ] **唔裝**：`discard`、Solid Queue、Solid Cable
-- [ ] `config/application.rb`：
+- [x] `rails new bookkeeping_api --api --database=sqlite3 --skip-test --skip-action-mailer --skip-action-mailbox --skip-action-text --skip-active-storage`
+- [x] 加 gem：`bcrypt`, `jwt`, `rack-cors`, `rack-attack`, `pagy`, `rswag`, `dotenv-rails`(dev), `bullet`(dev/test), `rspec-rails`, `factory_bot_rails`, `webmock`, `vcr`, `faraday`, `faraday-retry`, `faraday-multipart`, `stoplight`, `json-schema`, `lograge`
+- [x] **唔裝**：`discard`、Solid Queue、Solid Cable
+- [x] `config/application.rb`：
   - `config.time_zone = "Asia/Hong_Kong"`
   - `config.active_record.default_timezone = :local`
   - `config.middleware.insert_after ActionDispatch::RequestId, ActionDispatch::RequestId`
-- [ ] `config/initializers/cors.rb`：origin 由 `ENV["CORS_ORIGINS"].split(",")` 讀
-- [ ] `config/initializers/rack_attack.rb`：login 5/min/IP、AI 10/min/user、upload 20/min/user
-- [ ] `config/initializers/pagy.rb`：`Pagy::DEFAULT[:max_per_page] = 100`
-- [ ] `config/initializers/sqlite_uuid.rb`：將 `:uuid` map 做 `varchar(36)`（SQLite 冇 native UUID）
-- [ ] `config.generators`：`g.orm :active_record, primary_key_type: :uuid`
-- [ ] `ApplicationRecord`：
+- [x] `config/initializers/cors.rb`：origin 由 `ENV["CORS_ORIGINS"].split(",")` 讀
+- [x] `config/initializers/rack_attack.rb`：login 5/min/IP、改密碼 5/min/user、AI 10/min/user、upload 20/min/user
+- [x] `config/initializers/pagy.rb`：`Pagy::DEFAULT[:max_per_page] = 100`
+- [x] `config/initializers/sqlite_uuid.rb`：將 `:uuid` map 做 `varchar(36)`（SQLite 冇 native UUID）
+- [x] `config.generators`：`g.orm :active_record, primary_key_type: :uuid`
+- [x] `ApplicationRecord`：
   - `before_create`：`self.id ||= SecureRandom.uuid`
   - `self.implicit_order_column = "created_at"`
-- [ ] `config/database.yml`：2 個 DB（primary / cache）全部指向 `storage/`
-- [ ] SQLite WAL：`config/initializers/sqlite_pragma.rb`
+- [x] `config/database.yml`：2 個 DB（primary / cache）全部指向 `storage/`
+- [x] SQLite WAL：`config/initializers/sqlite_pragma.rb`
 
 ```ruby
 Rails.application.config.after_initialize do
@@ -488,23 +506,23 @@ Rails.application.config.after_initialize do
 end
 ```
 
-- [ ] Solid Cache 安裝（唔裝 Queue / Cable）：
+- [x] Solid Cache 安裝（唔裝 Queue / Cable）：
 
 ```bash
 bin/rails solid_cache:install
 ```
 
-- [ ] `Dockerfile`（Rails 8 預設，`EXPOSE 3000`）
-- [ ] `Procfile`：
+- [x] `Dockerfile`（Rails 8 預設，`EXPOSE 3000`）
+- [x] `Procfile`：
 
 ```
 web: bundle exec puma -C config/puma.rb
 release: bundle exec rails db:prepare && bundle exec rails db:migrate
 ```
 
-- [ ] `docs/dokku-setup.md`（純文檔，placeholder）
-- [ ] `.gitignore` 加 `bin/dokku-setup.sh`、`docs/dokku-setup.local.md`
-- [ ] `bin/dokku-setup.sh.example`（範本）
+- [x] `docs/dokku-setup.md`（純文檔，placeholder）
+- [x] `.gitignore` 加 `bin/dokku-setup.sh`、`docs/dokku-setup.local.md`
+- [x] `bin/dokku-setup.sh.example`（範本）
 
 **Dokku setup 範例**（`docs/dokku-setup.md`）：
 
@@ -606,15 +624,16 @@ Content-Type: application/json
 **任務**
 
 - [x] Migrations（2.2 / 2.3 / 2.4）：全部 `id: :uuid`；FK 一律 `type: :uuid`
-- [x] User 註冊後 callback 建立：
-  - 「現金」Account（kind=cash）
-  - 預設分類：
+- [x] User 註冊後 `after_create` callback 建立：
+  - 「現金」Account（kind=cash，color `#ecf0f1`，icon `mdi:cash`）
+  - 預設分類（每個都有 color `#ecf0f1` 同對應 `mdi:*` icon）：
     - Expense：飲食、交通、娛樂、購物、醫療、住屋、水電、其他支出
     - Income：薪水、獎金、投資、兼職、其他收入
 - [x] Account / Category / Merchant controller CRUD + hard delete
   - Category / Merchant：delete 時 FK nullify
-  - Account：有交易或 RecurringRule → 422 `account_in_use`
-- [x] Merchant autocomplete：`GET /merchants?q=`，回 top 10，SQLite `LIKE`；無 `q` 時回傳全部（商戶管理頁用）
+  - Account：有交易（含 transfer 目標）或 RecurringRule → 422 `account_in_use`
+- [x] Merchant autocomplete：`GET /merchants?q=`，回 top 10（`usage_count` 降序、`name` 升序），SQLite `LIKE`；無 `q` 時回傳全部（商戶管理頁用）
+- [x] Merchant update：可改 `name` / `default_category_id`（default category 必須屬同一 user）
 - [x] 所有 query scope 到 `current_user`
 
 **驗收**
@@ -627,26 +646,22 @@ Content-Type: application/json
 
 ---
 
-### Phase 3：Transaction CRUD + Idempotency + Refund
+### Phase 3：Transaction CRUD + Idempotency
 
 **任務**
 
 - [x] Migration：Transaction（2.5）、IdempotencyKey（2.9）：全部 `id: :uuid`；FK 一律 `type: :uuid`
-- [x] `Transaction` model：enum kind、validation、scope、`by_user`
-- [x] `TransactionsController`：index（filter + sort + pagy）、create、show、update、destroy（hard delete；關聯 refund `dependent: :destroy`）
-- [x] Idempotency middleware / concern：
+- [x] `Transaction` model：enum kind / source、validation（ownership）、scope、`by_user`
+- [x] `TransactionsController`：index（filter + sort + offset/limit）、create、show、update、destroy（hard delete）
+- [x] Idempotency（controller concern，`POST /transactions` 同 `/ai/confirm`）：
   - 讀 `Idempotency-Key` header
   - 查 IdempotencyKey table
-  - 若存在且 `created_at > 24.hours.ago` → 回 cache response
+  - 若存在且 `created_at > 24.hours.ago`：`request_hash` 相同 → replay response；唔同 → 422 `idempotency_conflict`
   - 否則執行 request，寫入 IdempotencyKey
   - 過期 key 由 host cron `rails maintenance:cleanup` 每日清 > 24 小時
-- [x] 建立時：update `merchant.usage_count`、自動 dedupe warning
-- [x] `POST /transactions/:id/refund`：
-  - 接受可選 `amount_cents`（預設全額）
-  - 建立新 transaction，`refund_of_id = 原 id`
-  - `kind` 同原交易
-  - `source = manual`
+- [x] 建立時：`increment!(:usage_count)` 對應 merchant
 - [x] `POST /transactions/:id/duplicate`：複製欄位，`occurred_at = now`
+- ~~`POST /transactions/:id/refund`~~：**2026-09-15 移除**（`refund_of_id` migration 已 drop）
 
 **Filter 參數**
 
@@ -667,9 +682,8 @@ Content-Type: application/json
 - [x] 建立 transfer 時 category_id 必須 nil
 - [x] 同 `Idempotency-Key` 打兩次只建一筆
 - [x] 打其他人 transaction id 回 404
-- [x] Refund 後原交易 `net_amount_cents` 正確
-- [x] 刪原交易後，關聯 refund 一齊消失
 - [x] 刪交易後 `GET /transactions` 真係冇嗰筆（hard delete）
+- [x] 同 key 但 body 唔同回 422 `idempotency_conflict`
 - [x] `q` 搵得到 merchant name（`left_joins(:merchant)` + `merchants.name LIKE`）
 - [x] Bullet 冇 N+1 warning
 
@@ -729,7 +743,9 @@ Content-Type: application/json
   - 失敗回 502 + structured log
 - [x] `ReceiptsController#upload`：收圖 → sha256 → 呼叫 LIHKG → 回 `{ url, sha256 }`（**唔落 DB**）
 - [x] `DeepSeekService`：
-  - `parse(image_base64:)` → 用 `deepseek-flash` vision
+  - `call(image_base64:, content_type:, categories:)` → 用 `deepseek-flash` vision
+  - `PROMPT_VERSION`（現為 `v2`）：改 prompt／解析邏輯要 bump，令舊 cache 失效
+  - Prompt 會帶入當前 user 分類（分 income／expense 列出），要求逐字 copy、唔准翻譯或自創
   - Request body：
     ```json
     {
@@ -753,15 +769,16 @@ Content-Type: application/json
 - [x] `AiController#parse`：
   - 接受 `{ "image_url": "https://..." }`
   - Host 必須喺 `LIHKG_ALLOWED_HOSTS`（預設 `img.eservice-hk.net`），否則 400
-  - 先 fetch 圖計 sha256，查 `(user_id, image_sha256)` 24 小時 cache
+  - 先 fetch 圖計 sha256，再用 `image_sha256` + `parse_signature` 查 24 小時 cache
   - 否則：base64 → DeepSeek `deepseek-flash`
-  - 回 preview JSON（唔入帳）
+  - 回 preview JSON（唔入帳）：`parsed`、`suggested_category_id`、`status`、`raw_response`、`error`、tokens、latency
   - HTTP status：
     - `success` → 200
-    - `partial` → 200（confidence 低）
+    - `partial` → 200
     - `failed` → 502
 - [x] `AiController#confirm`：
-  - 用戶確認 → 建 Transaction（`image_urls` = 確認嘅 URL array，`source = ai`）→ 關聯 AiImportLog
+  - 接受 `ai_import_log_id`（或 `import_log_id`）＋ transaction 欄位
+  - 用戶確認 → 建 Transaction（`image_urls` = 提供嘅 URL array，冇提供就用 log 嘅，`source = ai`）→ 回填 AiImportLog
   - 支援 `Idempotency-Key`
 
 **Pipeline**
@@ -769,7 +786,7 @@ Content-Type: application/json
 ```
 upload → LIHKG URL（只回 client，唔寫 Attachment）
        → parse(image_url) whitelist host
-       → cache check (24h, sha256)
+       → cache check (24h, sha256 + parse_signature)
        → backend fetch image
        → base64 inline
        → DeepSeek `deepseek-flash` vision
@@ -796,29 +813,27 @@ upload → LIHKG URL（只回 client，唔寫 Attachment）
 **任務**
 
 - [x] `DashboardController#show`：
-  - 總收入 / 總支出 / 退款 / 淨額（預設當月）
+  - 總收入 / 總支出 / 淨額（預設當月）
   - 最近 10 筆交易
-  - 分類佔比（top 5，含 refund）
-  - 帳戶餘額（initial + sum(income) - sum(expense) + sum(refund)）
+  - 分類佔比（每行 income_cents + expense_cents，按 expense 再 income 降序）
+  - 帳戶餘額（initial + sum(income) - sum(expense)，transfer 不計）
   - 週期交易提醒（7 日內 next_run_at）
 - [x] `SummariesController`：
   - `daily`：Asia/Hong_Kong 當日 00:00:00 - 23:59:59
   - `weekly`：Mon 00:00:00 - Sun 23:59:59
   - `monthly`：1 號 00:00:00 - 月末 23:59:59
   - 排除 transfer（獨立 `transfers` key）
-  - 回 by_category（含 refund_cents）、by_account、transfers、transactions 分頁
+  - 回 `daily`（逐日 net_cents）、`by_category`（income_cents + expense_cents）、`by_account`、`transfers`、`transactions` 分頁
   - catch-up 已喺 before_action 跑完，summary 只計真實 Transaction
 - [x] 用 `Time.use_zone("Asia/Hong_Kong")` 包住
-- [x] 加 index 支援 range query
+- [x] 加 index 支援 range query（`(user_id, occurred_at, kind)`）
 
 **計算邏輯**：
 
 ```ruby
-income_cents   = sum(kind: income)
-expense_cents  = sum(kind: expense, refund_of_id: nil)
-refund_cents   = sum(kind: expense).where.not(refund_of_id: nil)
-net_expense    = expense_cents - refund_cents
-net_cents      = income_cents - net_expense
+income_cents  = sum(kind: income)
+expense_cents = sum(kind: expense)
+net_cents     = income_cents - expense_cents
 ```
 
 **驗收**
@@ -827,7 +842,7 @@ net_cents      = income_cents - net_expense
 - [x] 9/15（週一）weekly = 9/15 - 9/21
 - [x] monthly 9 月 = 9/1 - 9/30
 - [x] transfer 唔計入 income/expense，喺 `transfers` key
-- [x] 退款正確扣減 net_expense
+- [x] `daily` 逐日 `{ date, net_cents }`（transfer 不計）
 - [x] 日界用 Asia/Hong_Kong：`2026-09-14 23:59:59 +08:00` 算 9/14，`2026-09-15 00:00:00 +08:00` 算 9/15
 
 ---
@@ -844,7 +859,8 @@ net_cents      = income_cents - net_expense
 - [x] Dashboard／Summaries 聚合 query 固定唔隨 category／account 數量增長（query-count regression specs）
 - [x] Brakeman：`config/brakeman.ignore` 記錄 3 個 `:account_id` PermitAttributes false positive（實際由 model-level ownership validation 擋；CI 用 `bin/brakeman -i config/brakeman.ignore`）
 - [x] GitHub Actions（`.github/workflows/ci.yml`）：test job 跑 `bin/rails db:test:prepare` + `bundle exec rspec`；`spec/rails_helper.rb` 提供 test 用 `DEEPSEEK_API_KEY`／`JWT_SECRET` 預設，唔依賴 `.env`
-- [x] Seed：admin user、預設分類、範例交易
+- [x] `db/seeds.rb` 目前留空（未使用）；預設帳戶／分類由 `User` 嘅 `after_create` callback 建立
+- [x] i18n：錯誤訊息集中喺 `config/locales/zh-TW.yml`
 - [x] `Lograge` + JSON log + `request_id`
 - [x] `dokku checks:enable` + `/up`
 - [x] SQLite backup script（**修正版**）：
@@ -936,7 +952,9 @@ AI_CACHE_HOURS=24
 }
 ```
 
-常見 code：`unauthorized`, `forbidden`, `not_found`, `validation_error`, `rate_limited`, `upstream_error`, `idempotency_conflict`, `circuit_open`, `account_in_use`, `already_materialized`
+常見 code：`unauthorized`, `invalid_credentials`, `invalid_current_password`, `not_found`, `validation_error`, `rate_limited`, `upstream_error`, `idempotency_conflict`, `account_in_use`, `already_materialized`
+
+`render_error` 會喺 `details` 有值時先加 `details`；`request_id` 一律附上。
 
 `request_id` 由 `ActionDispatch::RequestId` middleware 產生，喺 `ApplicationController` rescue_from 時帶入。
 
@@ -986,12 +1004,12 @@ Pagy 預設回 `page, items, count, pages`，要自己 map 做上面格式。
 5. **Dokku storage 單點**：冇 replication，靠 backup。
 6. **多貨幣**：而家只 HKD，將來加外幣要 exchange rate service。
 7. **Transfer 報表**：spec 只定義 summary 有 `transfers` key，詳細報表將來再補。
-8. **退款邏輯**：已定義 Option C（`refund_cents` 獨立統計），但 by_category 顯示方式要同 product 確認。
-9. **Recurring catch-up**：user 唔打 API 就唔會產生交易。呢個係故意。Backfill 預設關閉；若開啟，90 日上限係假設，要同 product 確認。
-10. **Hard delete 唔可還原**：刪交易會一齊刪關聯 refund；刪分類 / 商家只 nullify FK。帳戶有交易就刪唔到。
-11. **圖片 URL 持久性**：LIHKG URL 可能過期，將來要考慮 re-host 到 S3 / R2。
-12. **DeepSeek rate limit / cost**：未設 budget alert，將來要加。
-13. **AI JSON schema 嚴格度**：太嚴會令 partial 增加，太鬆會入錯數，要 collect 真實數據再 tune。
+8. **Recurring catch-up**：user 唔打 API 就唔會產生交易。呢個係故意。Backfill 預設關閉；若開啟，90 日上限係假設，要同 product 確認。
+9. **Hard delete 唔可還原**：刪交易真係唔見；刪分類 / 商家只 nullify FK。帳戶有交易就刪唔到。
+10. **圖片 URL 持久性**：LIHKG URL 可能過期，將來要考慮 re-host 到 S3 / R2。
+11. **DeepSeek rate limit / cost**：未設 budget alert，將來要加。
+12. **AI JSON schema 嚴格度**：太嚴會令 partial 增加，太鬆會入錯數，要 collect 真實數據再 tune。
+13. **AI cache 簽名**：`parse_signature` 綁定 `PROMPT_VERSION` 同 user 分類名單；改名／加減分類或 bump prompt 都會 miss cache 並重新 call AI。
 
 ---
 

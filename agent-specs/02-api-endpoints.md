@@ -42,14 +42,14 @@
 
 ### 3.5 Transactions
 
-| Method | Path                          | 說明                                                                                                                                                 |
-| ------ | ----------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------- |
+| Method | Path                          | 說明                                                                                                                                                                                                               |
+| ------ | ----------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
 | GET    | `/transactions`               | filter: `from, to, kind, category_id, account_id, merchant_id, q, min_amount, max_amount`（`q` 以 `LIKE` 比對 `note`、`payment_method`、merchant name）；sort: `occurred_at, amount_cents, created_at`；pagination |
-| POST   | `/transactions`               | create（支援 `Idempotency-Key`、可選 `image_urls`）                                                                                                  |
-| GET    | `/transactions/:id`           | show                                                                                                                                                 |
-| PATCH  | `/transactions/:id`           | update                                                                                                                                               |
-| DELETE | `/transactions/:id`           | hard delete                                                                                                                                          |
-| POST   | `/transactions/:id/duplicate` | 複製一筆（`occurred_at = now`）                                                                                                                       |
+| POST   | `/transactions`               | create（支援 `Idempotency-Key`、可選 `image_urls`）                                                                                                                                                                |
+| GET    | `/transactions/:id`           | show                                                                                                                                                                                                               |
+| PATCH  | `/transactions/:id`           | update                                                                                                                                                                                                             |
+| DELETE | `/transactions/:id`           | hard delete                                                                                                                                                                                                        |
+| POST   | `/transactions/:id/duplicate` | 複製一筆（`occurred_at = now`）                                                                                                                                                                                    |
 
 - `from` / `to` **必須同時提供**才會 filter；`to` 會取當日 end-of-day（Asia/Hong_Kong）
 - sort 只接受 `occurred_at` / `amount_cents` / `created_at`，前置 `-` 為降序；其他值回落 `occurred_at`
@@ -59,16 +59,16 @@
 
 ### 3.6 Recurring Rules
 
-| Method | Path                             | 說明                          |
-| ------ | -------------------------------- | ----------------------------- |
+| Method | Path                             | 說明                                                |
+| ------ | -------------------------------- | --------------------------------------------------- |
 | GET    | `/recurring_rules`               | list（可選 `?status=active\|paused\|ended` filter） |
-| POST   | `/recurring_rules`               | create                        |
-| PATCH  | `/recurring_rules/:id`           | update                        |
-| DELETE | `/recurring_rules/:id`           | hard delete（已產生交易保留） |
-| POST   | `/recurring_rules/:id/pause`     | 暫停                          |
-| POST   | `/recurring_rules/:id/resume`    | 恢復                          |
-| POST   | `/recurring_rules/:id/run_now`   | 手動觸發一次                  |
-| POST   | `/recurring_rules/:id/skip_next` | 跳過下一次                    |
+| POST   | `/recurring_rules`               | create                                              |
+| PATCH  | `/recurring_rules/:id`           | update                                              |
+| DELETE | `/recurring_rules/:id`           | hard delete（已產生交易保留）                       |
+| POST   | `/recurring_rules/:id/pause`     | 暫停                                                |
+| POST   | `/recurring_rules/:id/resume`    | 恢復                                                |
+| POST   | `/recurring_rules/:id/run_now`   | 手動觸發一次                                        |
+| POST   | `/recurring_rules/:id/skip_next` | 跳過下一次                                          |
 
 ### 3.7 Receipts / AI
 

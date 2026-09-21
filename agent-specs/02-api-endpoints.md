@@ -1,0 +1,149 @@
+# 3. API Endpoints（`/api/v1`）
+
+### 3.1 Auth
+
+| Method | Path             | 說明                      |
+| ------ | ---------------- | ------------------------- |
+| POST   | `/auth/register` | username + password       |
+| POST   | `/auth/login`    | username + password → JWT |
+| GET    | `/me`            | 當前 user                 |
+| PATCH  | `/me/password`   | 更改密碼                  |
+
+> **更改密碼**：`PATCH /me/password`，body 為 `password_challenge`（目前密碼）、`password`（新密碼，最少 8 字）、`password_confirmation`（可選）。目前密碼錯 → 422 `invalid_current_password`；新密碼唔符 validation → 422 `validation_error`；成功 → 200 回更新後嘅 user。已有 JWT 唔會失效（無 token rotation）。
+
+> **Logout**：backend **冇** `/auth/logout`、**冇** `/sessions`。Frontend 刪本地 JWT 就算登出。舊 token 仍然有效，直至 rotate `JWT_SECRET`。
+
+### 3.2 Accounts
+
+| Method | Path            | 說明                                                         |
+| ------ | --------------- | ------------------------------------------------------------ |
+| GET    | `/accounts`     | list                                                         |
+| POST   | `/accounts`     | create                                                       |
+| PATCH  | `/accounts/:id` | update                                                       |
+| DELETE | `/accounts/:id` | hard delete（有交易 / RecurringRule → 422 `account_in_use`） |
+
+### 3.3 Categories
+
+| Method | Path                       | 說明                                       |
+| ------ | -------------------------- | ------------------------------------------ |
+| GET    | `/categories?kind=expense` | list                                       |
+| POST   | `/categories`              | create                                     |
+| PATCH  | `/categories/:id`          | update                                     |
+| DELETE | `/categories/:id`          | hard delete（交易 `category_id` SET NULL） |
+
+### 3.4 Merchants
+
+| Method | Path                     | 說明                                       |
+| ------ | ------------------------ | ------------------------------------------ |
+| GET    | `/merchants?q=starbucks` | autocomplete                               |
+| POST   | `/merchants`             | create                                     |
+| PATCH  | `/merchants/:id`         | update（name／default_category_id）        |
+| DELETE | `/merchants/:id`         | hard delete（交易 `merchant_id` SET NULL） |
+
+### 3.5 Transactions
+
+| Method | Path                          | 說明                                                                                                                                                 |
+| ------ | ----------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------- |
+| GET    | `/transactions`               | filter: `from, to, kind, category_id, account_id, merchant_id, q, min_amount, max_amount`（`q` 以 `LIKE` 比對 `note`、`payment_method`、merchant name）；sort: `occurred_at, amount_cents, created_at`；pagination |
+| POST   | `/transactions`               | create（支援 `Idempotency-Key`、可選 `image_urls`）                                                                                                  |
+| GET    | `/transactions/:id`           | show                                                                                                                                                 |
+| PATCH  | `/transactions/:id`           | update                                                                                                                                               |
+| DELETE | `/transactions/:id`           | hard delete                                                                                                                                          |
+| POST   | `/transactions/:id/duplicate` | 複製一筆（`occurred_at = now`）                                                                                                                       |
+
+- `from` / `to` **必須同時提供**才會 filter；`to` 會取當日 end-of-day（Asia/Hong_Kong）
+- sort 只接受 `occurred_at` / `amount_cents` / `created_at`，前置 `-` 為降序；其他值回落 `occurred_at`
+- `per_page` 上限 100（clamp），預設 25
+- `create` 成功會 `increment!(:usage_count)` 對應 merchant
+- `duplicate` 複製欄位，`occurred_at = now`，`source` 保持原值
+
+### 3.6 Recurring Rules
+
+| Method | Path                             | 說明                          |
+| ------ | -------------------------------- | ----------------------------- |
+| GET    | `/recurring_rules`               | list（可選 `?status=active\|paused\|ended` filter） |
+| POST   | `/recurring_rules`               | create                        |
+| PATCH  | `/recurring_rules/:id`           | update                        |
+| DELETE | `/recurring_rules/:id`           | hard delete（已產生交易保留） |
+| POST   | `/recurring_rules/:id/pause`     | 暫停                          |
+| POST   | `/recurring_rules/:id/resume`    | 恢復                          |
+| POST   | `/recurring_rules/:id/run_now`   | 手動觸發一次                  |
+| POST   | `/recurring_rules/:id/skip_next` | 跳過下一次                    |
+
+### 3.7 Receipts / AI
+
+| Method | Path               | 說明                                                               |
+| ------ | ------------------ | ------------------------------------------------------------------ |
+| POST   | `/receipts/upload` | 上傳圖片 → LIHKG → 回 `{ url, sha256 }`（**唔**寫 Attachment）     |
+| POST   | `/ai/parse`        | 傳 `image_url` → DeepSeek `deepseek-flash` → preview               |
+| POST   | `/ai/confirm`      | 用戶確認 → 建立 transaction（寫入 `image_urls`），關聯 AiImportLog |
+
+> **注意**：`/ai/parse` 只接受 whitelist host 嘅 URL（預設 `img.eservice-hk.net`），防 SSRF。唔用 Attachment model。
+
+**`/ai/parse`**：`{ "image_url": "https://..." }` → 回 `{ id, image_urls, sha256, status, parsed, suggested_category_id, raw_response, error, tokens_in, tokens_out, latency_ms }`。`status = failed` 回 502 `upstream_error`；`partial` 回 200。
+
+**`/ai/confirm`**：body 需帶 `ai_import_log_id`（或 `import_log_id`）＋ transaction 欄位；建 transaction（`source = ai`，`image_urls` 未提供時用 log 嘅），回填 `AiImportLog.transaction_id`。支援 `Idempotency-Key`。`receipts/upload` 成功回 201。
+
+> `ai/confirm` 同 `recurring_rules/:id/run_now` 回嘅 transaction payload 仍帶 legacy `net_amount_cents` key，等同 `amount_cents`（退款已移除）。
+
+### 3.8 Dashboard
+
+| Method | Path         | 說明                                               |
+| ------ | ------------ | -------------------------------------------------- |
+| GET    | `/dashboard` | 總收入、總支出、淨額、最近交易、分類佔比、帳戶餘額 |
+
+- 可選 `?date=YYYY-MM-DD` 指定月份（預設當月，Asia/Hong_Kong）
+- `income_cents` / `expense_cents` / `net_cents` 只計該月（transfer 不計）
+- `by_category`：每行 `{ category_id, name, income_cents, expense_cents }`，按 expense 降序、再 income 降序
+- 餘額同時以 `accounts` 同 `account_balances` 兩個 key 回傳（每個 `{ id, name, currency, initial_balance_cents, balance_cents }`；balance = initial + income - expense，transfer 不計）
+- 7 日內到期嘅 active recurring rule 同時以 `upcoming_recurring` 同 `recurring_reminders` 回傳
+
+### 3.9 Summaries
+
+| Method | Path                                 | 說明              |
+| ------ | ------------------------------------ | ----------------- |
+| GET    | `/summaries/daily?date=2026-09-14`   | 單日              |
+| GET    | `/summaries/weekly?date=2026-09-14`  | 該週（Mon-Sun）   |
+| GET    | `/summaries/monthly?date=2026-09-14` | 該月（1 號-月末） |
+
+各期間都會回 `daily`（按香港時區逐日分組嘅淨收支，transfer 不計，只有 `{ date, net_cents }`）；月報用嚟畫收支日曆。`date` 參數預設今日（Asia/Hong_Kong）；`page` / `per_page`（上限 100）用於期內 `transactions` 分頁。
+
+**回應格式**：
+
+```json
+{
+  "data": {
+    "range": { "from": "...", "to": "..." },
+    "income_cents": 100000,
+    "expense_cents": 50000,
+    "net_cents": 55000,
+    "daily": [
+      { "date": "2026-09-14", "net_cents": 55000 }
+    ],
+    "by_category": [
+      { "category_id": "9b1deb4d-3b7d-4bad-9bdd-2b0d7b3dcb6d", "name": "飲食", "income_cents": 0, "expense_cents": 30000 }
+    ],
+    "by_account": [
+      { "account_id": "...", "name": "現金", "income_cents": 0, "expense_cents": 30000 }
+    ],
+    "transfers": { "count": 3, "total_cents": 200000 },
+    "transactions": { "data": [...], "meta": {...} }
+  }
+}
+```
+
+`by_category` 按 `expense_cents` 降序、再 `income_cents` 降序排列。
+
+### 3.10 Health
+
+| Method | Path               | 說明                  |
+| ------ | ------------------ | --------------------- |
+| GET    | `/up`              | Rails 8 內建 liveness |
+| GET    | `/health`          | 整體                  |
+| GET    | `/health/db`       | DB 連線 + WAL         |
+| GET    | `/health/deepseek` | DeepSeek ping         |
+| GET    | `/health/lihkg`    | LIHKG 圖床 ping       |
+
+- Health endpoint 全部喺 **root**（唔喺 `/api/v1`），唔經 `ApplicationController`、唔需要 JWT
+- 回 `{ status: "ok" | "error", checks: { ... } }`；任何 check 唔 ok → HTTP 503
+- DB check 讀 `PRAGMA journal_mode` 確認 WAL；DeepSeek check 打 `/models`；LIHKG check 打 `LIHKG_HEALTHCHECK_URL`（fallback `LIHKG_UPLOAD_URL`）並帶 `Origin: https://lihkg.com`

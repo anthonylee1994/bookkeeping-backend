@@ -2,30 +2,28 @@ module Api
   module V1
     class DashboardController < ApplicationController
       def show
-        Time.use_zone("Asia/Hong_Kong") do
-          now = Time.zone.now
-          date = params[:date].present? ? Date.iso8601(params[:date].to_s) : now.to_date
-          from = date.beginning_of_month.in_time_zone
-          to = date.end_of_month.end_of_day
-          transactions = current_user.transactions.where(occurred_at: from..to)
-          expense = transactions.where(kind: :expense).sum(:amount_cents)
-          income = transactions.where(kind: :income).sum(:amount_cents)
-          balances = account_balances
-          reminders = upcoming_rules(now)
+        now = Time.zone.now
+        date = params[:date].present? ? Date.iso8601(params[:date].to_s) : now.to_date
+        from = date.beginning_of_month.in_time_zone
+        to = date.end_of_month.end_of_day
+        transactions = current_user.transactions.where(occurred_at: from..to)
+        expense = transactions.where(kind: :expense).sum(:amount_cents)
+        income = transactions.where(kind: :income).sum(:amount_cents)
+        balances = account_balances
+        reminders = upcoming_rules(now)
 
-          render json: { data: {
-            range: { from: from.iso8601, to: to.iso8601 },
-            income_cents: income,
-            expense_cents: expense,
-            net_cents: income - expense,
-            recent_transactions: transaction_rows(current_user.transactions.order(occurred_at: :desc).limit(10)),
-            by_category: category_breakdown(transactions),
-            accounts: balances,
-            account_balances: balances,
-            upcoming_recurring: reminders,
-            recurring_reminders: reminders
-          } }
-        end
+        render json: { data: {
+          range: { from: from.iso8601, to: to.iso8601 },
+          income_cents: income,
+          expense_cents: expense,
+          net_cents: income - expense,
+          recent_transactions: transaction_rows(current_user.transactions.order(occurred_at: :desc).limit(10)),
+          by_category: category_breakdown(transactions),
+          accounts: balances,
+          account_balances: balances,
+          upcoming_recurring: reminders,
+          recurring_reminders: reminders
+        } }
       rescue Date::Error
         render_error(code: "validation_error", message: I18n.t("api.errors.invalid_value"), status: :unprocessable_content)
       end

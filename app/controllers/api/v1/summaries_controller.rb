@@ -16,22 +16,20 @@ module Api
       private
 
       def summarize(period)
-        Time.use_zone("Asia/Hong_Kong") do
-          date = params[:date].present? ? Date.iso8601(params[:date].to_s) : Time.zone.today
-          from, to = boundaries(period, date)
-          scope = current_user.transactions.where(occurred_at: from..to)
-          regular = scope.where.not(kind: :transfer)
-          income = regular.where(kind: :income).sum(:amount_cents)
-          expense = regular.where(kind: :expense).sum(:amount_cents)
-          render json: { data: {
-            range: { from: from.iso8601, to: to.iso8601 }, income_cents: income, expense_cents: expense,
-            net_cents: income - expense,
-            daily: daily_breakdown(regular),
-            by_category: by_category(regular), by_account: by_account(regular),
-            transfers: { count: scope.where(kind: :transfer).count, total_cents: scope.where(kind: :transfer).sum(:amount_cents) },
-            transactions: paginated_transactions(regular)
-          } }
-        end
+        date = params[:date].present? ? Date.iso8601(params[:date].to_s) : Time.zone.today
+        from, to = boundaries(period, date)
+        scope = current_user.transactions.where(occurred_at: from..to)
+        regular = scope.where.not(kind: :transfer)
+        income = regular.where(kind: :income).sum(:amount_cents)
+        expense = regular.where(kind: :expense).sum(:amount_cents)
+        render json: { data: {
+          range: { from: from.iso8601, to: to.iso8601 }, income_cents: income, expense_cents: expense,
+          net_cents: income - expense,
+          daily: daily_breakdown(regular),
+          by_category: by_category(regular), by_account: by_account(regular),
+          transfers: { count: scope.where(kind: :transfer).count, total_cents: scope.where(kind: :transfer).sum(:amount_cents) },
+          transactions: paginated_transactions(regular)
+        } }
       rescue Date::Error
         render_error(code: "validation_error", message: I18n.t("api.errors.invalid_value"), status: :unprocessable_content)
       end

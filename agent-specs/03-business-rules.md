@@ -7,7 +7,7 @@
 5. **Transfer**：唔計入 income/expense summary；獨立 `transfers` key；亦唔計入帳戶餘額（`account_balances` 只計 income/expense）
 6. **Recurring 產生邏輯**（request-time catch-up，**唔用 background job**）：
 
-- 已 authenticate 嘅 request 開頭呼叫 `RecurringCatchUp.call(user: current_user)`（`Time.use_zone("Asia/Hong_Kong")`）
+- 已 authenticate 嘅 request 開頭呼叫 `RecurringCatchUp.call(user: current_user)`（全 app 已用 `config.time_zone = "Asia/Hong_Kong"`，唔需要 `Time.use_zone`）
 - 跳過：`AuthController`（`skip_before_action`）、`HealthController`（唔繼承 `ApplicationController`）
 - 只處理該 user `status = active` 且 `next_run_at <= now` 嘅 rule
 - 用 `RecurringOccurrence` unique index 保證 idempotent；併發 request 撞 unique → rescue 當已處理

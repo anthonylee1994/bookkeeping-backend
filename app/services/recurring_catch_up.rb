@@ -9,10 +9,8 @@ class RecurringCatchUp
   end
 
   def call
-    Time.use_zone("Asia/Hong_Kong") do
-      @user.recurring_rules.includes(:account, :category, :merchant).where(status: :active).where("next_run_at <= ?", @now).find_each do |rule|
-        process_rule(rule)
-      end
+    @user.recurring_rules.includes(:account, :category, :merchant).where(status: :active).where("next_run_at <= ?", @now).find_each do |rule|
+      process_rule(rule)
     end
   end
 

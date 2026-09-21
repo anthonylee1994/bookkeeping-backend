@@ -228,7 +228,7 @@ Content-Type: application/json
   - 月末邊界處理（31 號 → 當月最後一日）
 - [x] `RecurringCatchUp` service（**唔用 job**）：
   - `call(user:)` 掃該 user `status = active` 且 `next_run_at <= now`
-  - 包 `Time.use_zone("Asia/Hong_Kong")`
+  - 靠全 app `config.time_zone = "Asia/Hong_Kong"`，唔再包 `Time.use_zone`
   - 用 `RecurringOccurrence` unique index 保證 idempotent；撞 unique → rescue 當已處理
   - 建立 Transaction，`source = recurring`
   - 更新 `last_run_at` / `next_run_at`
@@ -353,7 +353,7 @@ upload → LIHKG URL（只回 client，唔寫 Attachment）
   - 排除 transfer（獨立 `transfers` key）
   - 回 `daily`（逐日 net_cents）、`by_category`（income_cents + expense_cents）、`by_account`、`transfers`、`transactions` 分頁
   - catch-up 已喺 before_action 跑完，summary 只計真實 Transaction
-- [x] 用 `Time.use_zone("Asia/Hong_Kong")` 包住
+- [x] 靠全 app `config.time_zone = "Asia/Hong_Kong"`，唔再包 `Time.use_zone`
 - [x] 加 index 支援 range query（`(user_id, occurred_at, kind)`）
 
 **計算邏輯**：

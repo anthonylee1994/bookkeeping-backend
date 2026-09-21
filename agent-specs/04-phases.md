@@ -435,29 +435,29 @@ dokku run bookkeeping-backend sh -c '
 
 **對照表**
 
-| 原 Rails 元件 | loco.rs 對應 |
-| ------------- | ------------ |
-| `app/models/*.rb` | `src/models/_entities/*.rs`（SeaORM entity）+ `src/models/users.rs` |
-| `ApplicationRecord` UUID PK | entity `id: String`，插入時 `util::new_id()` |
-| `app/controllers/api/v1/*` | `src/controllers/*.rs`（axum handlers，`ApiResult<Response>`） |
-| `ApplicationController#authenticate_user!` | `src/api/extract.rs` `AuthUser` extractor |
-| `catch_up_recurring` before_action | `AuthUser` extractor 內 `services::recurring::catch_up` |
-| 統一錯誤格式 | `src/api/error.rs` `ApiError` |
-| Pagy | `src/api/util.rs` clamp + 手砌 meta |
-| Rack::Attack | `src/middleware/rate_limit.rs` |
-| CORS initializer | `src/middleware/cors.rs` |
-| Lograge + request_id | `src/api/request_id.rs` + loco JSON logger |
-| `has_secure_password`（bcrypt） | `src/api/auth.rs` bcrypt（verify `$2a$` 相容） |
-| `JsonWebToken` | `src/api/auth.rs` jsonwebtoken HS256，唔驗 exp |
-| `RecurringRuleCalculator` / `RecurringCatchUp` | `src/services/recurring.rs` |
-| `DeepSeekService` | `src/services/deepseek.rs` |
-| `LihkgUploadService` | `src/services/lihkg.rs` |
-| `lib/tasks/maintenance.rake` | `src/tasks/maintenance.rs`（`bookkeeping-backend-cli task maintenance:cleanup`） |
-| `db/migrate/*` | `migration/src/m20260921000000_init.rs`（同 schema 一致） |
-| rswag `/api-docs` | `src/controllers/docs.rs` 回 `swagger/v1/swagger.yaml` |
-| `rails s` | `cargo loco start` |
-| `bundle exec rspec` | `cargo test` |
-| Dokku Rails buildpack | Dokku Dockerfile（Rust multi-stage） |
+| 原 Rails 元件                                  | loco.rs 對應                                                                     |
+| ---------------------------------------------- | -------------------------------------------------------------------------------- |
+| `app/models/*.rb`                              | `src/models/_entities/*.rs`（SeaORM entity）+ `src/models/users.rs`              |
+| `ApplicationRecord` UUID PK                    | entity `id: String`，插入時 `util::new_id()`                                     |
+| `app/controllers/api/v1/*`                     | `src/controllers/*.rs`（axum handlers，`ApiResult<Response>`）                   |
+| `ApplicationController#authenticate_user!`     | `src/api/extract.rs` `AuthUser` extractor                                        |
+| `catch_up_recurring` before_action             | `AuthUser` extractor 內 `services::recurring::catch_up`                          |
+| 統一錯誤格式                                   | `src/api/error.rs` `ApiError`                                                    |
+| Pagy                                           | `src/api/util.rs` clamp + 手砌 meta                                              |
+| Rack::Attack                                   | `src/middleware/rate_limit.rs`                                                   |
+| CORS initializer                               | `src/middleware/cors.rs`                                                         |
+| Lograge + request_id                           | `src/api/request_id.rs` + loco JSON logger                                       |
+| `has_secure_password`（bcrypt）                | `src/api/auth.rs` bcrypt（verify `$2a$` 相容）                                   |
+| `JsonWebToken`                                 | `src/api/auth.rs` jsonwebtoken HS256，唔驗 exp                                   |
+| `RecurringRuleCalculator` / `RecurringCatchUp` | `src/services/recurring.rs`                                                      |
+| `DeepSeekService`                              | `src/services/deepseek.rs`                                                       |
+| `LihkgUploadService`                           | `src/services/lihkg.rs`                                                          |
+| `lib/tasks/maintenance.rake`                   | `src/tasks/maintenance.rs`（`bookkeeping-backend-cli task maintenance:cleanup`） |
+| `db/migrate/*`                                 | `migration/src/m20260921000000_init.rs`（同 schema 一致）                        |
+| rswag `/api-docs`                              | `src/controllers/docs.rs` 回 `swagger/v1/swagger.yaml`                           |
+| `rails s`                                      | `cargo loco start`                                                               |
+| `bundle exec rspec`                            | `cargo test`                                                                     |
+| Dokku Rails buildpack                          | Dokku Dockerfile（Rust multi-stage）                                             |
 
 **驗收**
 
@@ -473,21 +473,21 @@ dokku run bookkeeping-backend sh -c '
 
 原本 Rails RSpec 嘅案例已 port 成 Rust：
 
-| Rails spec | Rust test |
-| ---------- | --------- |
-| `spec/requests/api/v1/auth_spec.rb` | `tests/requests/auth_spec.rs`（register/login/absent sessions） |
-| `spec/requests/api/v1/me_spec.rb` | `tests/requests/auth_spec.rs`（me + PATCH password） |
-| `spec/requests/api/v1/accounts_spec.rb` | `tests/requests/accounts_spec.rs` |
-| `spec/requests/api/v1/categories_spec.rb` | `tests/requests/categories_spec.rs` |
-| `spec/requests/api/v1/merchants_spec.rb` | `tests/requests/merchants_spec.rs` |
-| `spec/requests/api/v1/transactions_spec.rb` | `tests/requests/transactions_spec.rs` |
-| `spec/requests/api/v1/recurring_rules_spec.rb` | `tests/requests/recurring_spec.rs` |
-| `spec/requests/api/v1/phase5_spec.rb`（AI/LIHKG） | `tests/requests/ai_spec.rs`（wiremock 代替 WebMock） |
-| `spec/requests/api/v1/phase6_spec.rb`（dashboard/summaries） | `tests/requests/summaries_spec.rs` |
-| `spec/requests/up_spec.rb`、`spec/requests/api_docs_spec.rb` | `tests/requests/health_spec.rs` |
-| `spec/tasks/maintenance_spec.rb` | `tests/requests/health_spec.rs` |
-| `spec/services/json_web_token_spec.rb` | `src/api/auth.rs` `#[cfg(test)]` |
-| `spec/services/recurring_rule_calculator_spec.rb` | `src/services/recurring.rs` `#[cfg(test)]` |
-| `spec/models/*_spec.rb` | 由對應 request spec + DB helpers 覆蓋 |
+| Rails spec                                                   | Rust test                                                       |
+| ------------------------------------------------------------ | --------------------------------------------------------------- |
+| `spec/requests/api/v1/auth_spec.rb`                          | `tests/requests/auth_spec.rs`（register/login/absent sessions） |
+| `spec/requests/api/v1/me_spec.rb`                            | `tests/requests/auth_spec.rs`（me + PATCH password）            |
+| `spec/requests/api/v1/accounts_spec.rb`                      | `tests/requests/accounts_spec.rs`                               |
+| `spec/requests/api/v1/categories_spec.rb`                    | `tests/requests/categories_spec.rs`                             |
+| `spec/requests/api/v1/merchants_spec.rb`                     | `tests/requests/merchants_spec.rs`                              |
+| `spec/requests/api/v1/transactions_spec.rb`                  | `tests/requests/transactions_spec.rs`                           |
+| `spec/requests/api/v1/recurring_rules_spec.rb`               | `tests/requests/recurring_spec.rs`                              |
+| `spec/requests/api/v1/phase5_spec.rb`（AI/LIHKG）            | `tests/requests/ai_spec.rs`（wiremock 代替 WebMock）            |
+| `spec/requests/api/v1/phase6_spec.rb`（dashboard/summaries） | `tests/requests/summaries_spec.rs`                              |
+| `spec/requests/up_spec.rb`、`spec/requests/api_docs_spec.rb` | `tests/requests/health_spec.rs`                                 |
+| `spec/tasks/maintenance_spec.rb`                             | `tests/requests/health_spec.rs`                                 |
+| `spec/services/json_web_token_spec.rb`                       | `src/api/auth.rs` `#[cfg(test)]`                                |
+| `spec/services/recurring_rule_calculator_spec.rb`            | `src/services/recurring.rs` `#[cfg(test)]`                      |
+| `spec/models/*_spec.rb`                                      | 由對應 request spec + DB helpers 覆蓋                           |
 
 > 未 port：`spec/config/phase0_spec.rb`（Rails 專屬設定）同 query-count / N+1 regression 兩個測試（Rust 版聚合查詢數固定，冇現成 query counter；見 `03-business-rules`）。

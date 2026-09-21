@@ -39,22 +39,22 @@
 
 # 1. 技術棧
 
-| 項目            | 選擇                                                             |
-| --------------- | ---------------------------------------------------------------- |
-| 語言            | Rust 1.98+                                                       |
-| Framework       | loco.rs 1.1                                                      |
-| ORM             | SeaORM 2.0（sqlx-sqlite）                                        |
-| DB              | SQLite 3（WAL mode, busy_timeout=5000, foreign_keys=ON）         |
-| Auth            | bcrypt（相容 Rails `$2a$` hash）+ JWT HS256（`jsonwebtoken`）    |
-| Background      | **冇**。Recurring 用 request-time catch-up；cleanup 用 host cron |
-| WebSocket       | 唔用                                                             |
+| 項目            | 選擇                                                                       |
+| --------------- | -------------------------------------------------------------------------- |
+| 語言            | Rust 1.98+                                                                 |
+| Framework       | loco.rs 1.1                                                                |
+| ORM             | SeaORM 2.0（sqlx-sqlite）                                                  |
+| DB              | SQLite 3（WAL mode, busy_timeout=5000, foreign_keys=ON）                   |
+| Auth            | bcrypt（相容 Rails `$2a$` hash）+ JWT HS256（`jsonwebtoken`）              |
+| Background      | **冇**。Recurring 用 request-time catch-up；cleanup 用 host cron           |
+| WebSocket       | 唔用                                                                       |
 | Rate limit      | 自建 in-memory sliding-window middleware（`src/middleware/rate_limit.rs`） |
-| 分頁            | offset + limit，`per_page` clamp 1..100（預設 25，Meta 自己 map）|
-| 測試            | `cargo test`（loco `testing` feature + `serial_test`）           |
-| API Docs        | 靜態 OpenAPI，`GET /api-docs` 回 `swagger/v1/swagger.yaml`       |
-| 刪除            | hard delete（唔用 discard）                                      |
-| JSON 驗證       | 手寫 schema 驗證 DeepSeek 回傳（`src/services/deepseek.rs`）     |
-| HTTP Client     | reqwest（rustls，support multipart）                             |
-| Circuit Breaker | 自建（`src/services/lihkg.rs`，連續失敗 threshold + cooldown）   |
-| ENV             | dotenvy（dev `.env`）+ Dokku config（prod）                      |
-| 部署            | Dokku（Dockerfile）                                              |
+| 分頁            | offset + limit，`per_page` clamp 1..100（預設 25，Meta 自己 map）          |
+| 測試            | `cargo test`（loco `testing` feature + `serial_test`）                     |
+| API Docs        | 靜態 OpenAPI，`GET /api-docs` 回 `swagger/v1/swagger.yaml`                 |
+| 刪除            | hard delete（唔用 discard）                                                |
+| JSON 驗證       | 手寫 schema 驗證 DeepSeek 回傳（`src/services/deepseek.rs`）               |
+| HTTP Client     | reqwest（rustls，support multipart）                                       |
+| Circuit Breaker | 自建（`src/services/lihkg.rs`，連續失敗 threshold + cooldown）             |
+| ENV             | dotenvy（dev `.env`）+ Dokku config（prod）                                |
+| 部署            | Dokku（Dockerfile）                                                        |

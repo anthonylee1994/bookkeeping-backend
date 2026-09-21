@@ -12,7 +12,9 @@ use sea_orm::{
 use serde::Deserialize;
 use serde_json::{json, Value};
 
-use crate::api::{error::ApiError, time, util, validation::ValidationErrors, ApiResult, AuthUser};
+use crate::api::{
+    error::ApiError, params, time, util, validation::ValidationErrors, ApiResult, AuthUser,
+};
 use crate::app::AppContext;
 use crate::models::_entities::{categories, merchants, transactions};
 use crate::views;
@@ -70,10 +72,7 @@ async fn create(
     Json(body): Json<Value>,
 ) -> ApiResult<Response> {
     let name = body.get("name").and_then(Value::as_str).unwrap_or("");
-    let default_category_id = body
-        .get("default_category_id")
-        .and_then(Value::as_str)
-        .map(ToString::to_string);
+    let default_category_id = params::string_field(&body, "default_category_id");
 
     let mut errors = ValidationErrors::new();
     if name.trim().is_empty() {
@@ -128,9 +127,9 @@ async fn update(
             errors.add("name", "商家名稱", "已被使用");
         }
     }
-    if body.get("default_category_id").is_some() {
-        if let Some(category_id) = body.get("default_category_id").and_then(Value::as_str) {
-            if !category_owned(&ctx.db, user.id(), category_id).await? {
+    if params::touched(&body, "default_category_id") {
+        if let Some(category_id) = params::string_field(&body, "default_category_id") {
+            if !category_owned(&ctx.db, user.id(), &category_id).await? {
                 errors.add("default_category", "預設分類", "無效");
             }
         }
@@ -143,11 +142,8 @@ async fn update(
     if let Some(name) = name {
         active.name = Set(name.trim().to_string());
     }
-    if body.get("default_category_id").is_some() {
-        active.default_category_id = Set(body
-            .get("default_category_id")
-            .and_then(Value::as_str)
-            .map(ToString::to_string));
+    if params::touched(&body, "default_category_id") {
+        active.default_category_id = Set(params::string_field(&body, "default_category_id"));
     }
     active.updated_at = Set(time::now_local());
     let merchant = active.update(&ctx.db).await.map_err(map_db_error)?;

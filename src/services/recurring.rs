@@ -142,22 +142,15 @@ async fn process_rule(
         due.retain(|run_at| run_at.date() >= cutoff);
     }
 
-    let materialize: Vec<NaiveDateTime> = if backfill {
-        due.clone()
+    // Without backfill only the most recent due occurrence is materialized;
+    // every occurrence is still recorded in `recurring_occurrences`.
+    let first_materialized = if backfill {
+        0
     } else {
-        due.last().copied().into_iter().collect()
+        due.len().saturating_sub(1)
     };
-
-    for run_at in &due {
-        record_occurrence(
-            db,
-            user_id,
-            rule,
-            *run_at,
-            materialize.contains(run_at),
-            now,
-        )
-        .await?;
+    for (index, run_at) in due.iter().enumerate() {
+        record_occurrence(db, user_id, rule, *run_at, index >= first_materialized, now).await?;
     }
 
     let mut active: recurring_rules::ActiveModel = rule.clone().into();
@@ -172,6 +165,34 @@ async fn process_rule(
     active.update(db).await?;
 
     Ok(())
+}
+
+/// Builds the transaction a rule materializes for a single `occurred_at`.
+fn base_transaction(
+    user_id: &str,
+    rule: &recurring_rules::Model,
+    occurred_at: NaiveDateTime,
+    now: NaiveDateTime,
+) -> transactions::ActiveModel {
+    transactions::ActiveModel {
+        id: Set(util::new_id()),
+        user_id: Set(user_id.to_string()),
+        account_id: Set(rule.account_id.clone()),
+        category_id: Set(rule.category_id.clone()),
+        merchant_id: Set(rule.merchant_id.clone()),
+        kind: Set(rule.kind),
+        amount_cents: Set(rule.amount_cents),
+        currency: Set(rule.currency.clone()),
+        occurred_at: Set(occurred_at),
+        note: Set(rule.note.clone()),
+        payment_method: Set(None),
+        image_urls: Set(serde_json::json!([])),
+        source: Set(SOURCE_RECURRING),
+        transfer_account_id: Set(None),
+        idempotency_key: Set(None),
+        created_at: Set(now),
+        updated_at: Set(now),
+    }
 }
 
 async fn record_occurrence(
@@ -201,37 +222,15 @@ async fn record_occurrence(
         updated_at: Set(now),
     }
     .insert(db)
-    .await
-    .map_err(|err| match err {
-        DbErr::RecordNotInserted => DbErr::RecordNotInserted,
-        other => other,
-    })?;
+    .await?;
 
     if !materialize {
         return Ok(());
     }
 
-    let transaction = transactions::ActiveModel {
-        id: Set(util::new_id()),
-        user_id: Set(user_id.to_string()),
-        account_id: Set(rule.account_id.clone()),
-        category_id: Set(rule.category_id.clone()),
-        merchant_id: Set(rule.merchant_id.clone()),
-        kind: Set(rule.kind),
-        amount_cents: Set(rule.amount_cents),
-        currency: Set(rule.currency.clone()),
-        occurred_at: Set(run_at),
-        note: Set(rule.note.clone()),
-        payment_method: Set(None),
-        image_urls: Set(serde_json::json!([])),
-        source: Set(SOURCE_RECURRING),
-        transfer_account_id: Set(None),
-        idempotency_key: Set(None),
-        created_at: Set(now),
-        updated_at: Set(now),
-    }
-    .insert(db)
-    .await?;
+    let transaction = base_transaction(user_id, rule, run_at, now)
+        .insert(db)
+        .await?;
 
     let mut occurrence: recurring_occurrences::ActiveModel =
         recurring_occurrences::Entity::find_by_id(occurrence_id)
@@ -288,27 +287,9 @@ pub async fn run_now(
         }
     };
 
-    let transaction = transactions::ActiveModel {
-        id: Set(util::new_id()),
-        user_id: Set(user_id.to_string()),
-        account_id: Set(rule.account_id.clone()),
-        category_id: Set(rule.category_id.clone()),
-        merchant_id: Set(rule.merchant_id.clone()),
-        kind: Set(rule.kind),
-        amount_cents: Set(rule.amount_cents),
-        currency: Set(rule.currency.clone()),
-        occurred_at: Set(now),
-        note: Set(rule.note.clone()),
-        payment_method: Set(None),
-        image_urls: Set(serde_json::json!([])),
-        source: Set(SOURCE_RECURRING),
-        transfer_account_id: Set(None),
-        idempotency_key: Set(None),
-        created_at: Set(now),
-        updated_at: Set(now),
-    }
-    .insert(&txn)
-    .await?;
+    let transaction = base_transaction(user_id, rule, now, now)
+        .insert(&txn)
+        .await?;
 
     let mut occurrence_active: recurring_occurrences::ActiveModel =
         recurring_occurrences::Entity::find_by_id(occurrence_id)

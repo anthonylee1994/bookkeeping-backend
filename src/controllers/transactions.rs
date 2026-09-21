@@ -15,7 +15,8 @@ use serde::Deserialize;
 use serde_json::{json, Value};
 
 use crate::api::{
-    error::ApiError, idempotency, time, util, validation::ValidationErrors, ApiResult, AuthUser,
+    error::ApiError, idempotency, params, time, util, validation::ValidationErrors, ApiResult,
+    AuthUser,
 };
 use crate::app::AppContext;
 use crate::models::_entities::{
@@ -438,50 +439,28 @@ impl ValidatedFields {
         body: &Value,
         existing: Option<&transactions::Model>,
     ) -> Result<Self, ApiError> {
-        let field = |key: &str| body.get(key);
+        let account_id = params::string_field(body, "account_id");
+        let category_touched = params::touched(body, "category_id");
+        let category_id = params::string_field(body, "category_id");
+        let merchant_touched = params::touched(body, "merchant_id");
+        let merchant_id = params::string_field(body, "merchant_id");
+        let transfer_touched = params::touched(body, "transfer_account_id");
+        let transfer_account_id = params::string_field(body, "transfer_account_id");
 
-        let account_id = field("account_id")
-            .and_then(Value::as_str)
-            .map(ToString::to_string);
-        let category_touched = field("category_id").is_some();
-        let category_id = field("category_id")
-            .and_then(Value::as_str)
-            .map(ToString::to_string);
-        let merchant_touched = field("merchant_id").is_some();
-        let merchant_id = field("merchant_id")
-            .and_then(Value::as_str)
-            .map(ToString::to_string);
-        let transfer_touched = field("transfer_account_id").is_some();
-        let transfer_account_id = field("transfer_account_id")
-            .and_then(Value::as_str)
-            .map(ToString::to_string);
+        let kind = params::parse_enum_field(body, "kind", views::parse_transaction_kind)?;
+        let source = params::parse_enum_field(body, "source", views::parse_transaction_source)?;
+        let amount_cents = params::parse_i32_field(body, "amount_cents")?;
+        let currency = params::string_field(body, "currency");
 
-        let kind = parse_enum_field(body, "kind", views::parse_transaction_kind)?;
-        let source = parse_enum_field(body, "source", views::parse_transaction_source)?;
-        let amount_cents = parse_i32_field(body, "amount_cents")?;
-        let currency = field("currency")
-            .and_then(Value::as_str)
-            .map(ToString::to_string);
+        let occurred_at = params::parse_datetime_field(body, "occurred_at")?;
 
-        let occurred_at = match field("occurred_at") {
-            None | Some(Value::Null) => None,
-            Some(Value::String(value)) => {
-                Some(time::parse_datetime(value).ok_or_else(ApiError::invalid_value)?)
-            }
-            Some(_) => return Err(ApiError::invalid_value()),
-        };
+        let note_touched = params::touched(body, "note");
+        let note = params::string_field(body, "note");
+        let payment_method_touched = params::touched(body, "payment_method");
+        let payment_method = params::string_field(body, "payment_method");
 
-        let note_touched = field("note").is_some();
-        let note = field("note")
-            .and_then(Value::as_str)
-            .map(ToString::to_string);
-        let payment_method_touched = field("payment_method").is_some();
-        let payment_method = field("payment_method")
-            .and_then(Value::as_str)
-            .map(ToString::to_string);
-
-        let image_urls_touched = field("image_urls").is_some();
-        let image_urls = match field("image_urls") {
+        let image_urls_touched = params::touched(body, "image_urls");
+        let image_urls = match body.get("image_urls") {
             None => Vec::new(),
             Some(Value::Array(items)) => {
                 let mut urls = Vec::with_capacity(items.len());
@@ -651,35 +630,6 @@ async fn owned(
         _ => false,
     };
     Ok(value)
-}
-
-fn parse_enum_field(
-    body: &Value,
-    key: &str,
-    parser: fn(&str) -> Option<i32>,
-) -> Result<Option<i32>, ApiError> {
-    match body.get(key) {
-        None | Some(Value::Null) => Ok(None),
-        Some(Value::String(value)) => parser(value).map(Some).ok_or_else(ApiError::invalid_value),
-        Some(_) => Err(ApiError::invalid_value()),
-    }
-}
-
-fn parse_i32_field(body: &Value, key: &str) -> Result<Option<i32>, ApiError> {
-    match body.get(key) {
-        None | Some(Value::Null) => Ok(None),
-        Some(Value::Number(number)) => number
-            .as_i64()
-            .and_then(|value| i32::try_from(value).ok())
-            .map(Some)
-            .ok_or_else(ApiError::invalid_value),
-        Some(Value::String(value)) => value
-            .trim()
-            .parse::<i32>()
-            .map(Some)
-            .map_err(|_| ApiError::invalid_value()),
-        Some(_) => Err(ApiError::invalid_value()),
-    }
 }
 
 fn image_urls_error() -> ApiError {

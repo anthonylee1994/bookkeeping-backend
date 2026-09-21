@@ -12,7 +12,9 @@ use sea_orm::{
 use serde::Deserialize;
 use serde_json::{json, Value};
 
-use crate::api::{error::ApiError, time, util, validation::ValidationErrors, ApiResult, AuthUser};
+use crate::api::{
+    error::ApiError, params, time, util, validation::ValidationErrors, ApiResult, AuthUser,
+};
 use crate::app::AppContext;
 use crate::models::_entities::{categories, merchants, recurring_rules, transactions};
 use crate::views;
@@ -79,7 +81,7 @@ async fn create(
     Json(body): Json<Value>,
 ) -> ApiResult<Response> {
     let name = body.get("name").and_then(Value::as_str).unwrap_or("");
-    let kind = parse_kind(&body)?;
+    let kind = params::parse_enum_field(&body, "kind", views::parse_category_kind)?;
 
     let mut errors = ValidationErrors::new();
     if name.trim().is_empty() {
@@ -133,7 +135,7 @@ async fn update(
     Json(body): Json<Value>,
 ) -> ApiResult<Response> {
     let category = find_scoped(&ctx.db, user.id(), &id).await?;
-    let kind = parse_kind(&body)?;
+    let kind = params::parse_enum_field(&body, "kind", views::parse_category_kind)?;
     let name = body.get("name").and_then(Value::as_str);
     let effective_kind = kind.unwrap_or(category.kind);
     let effective_name = name.map(str::trim).unwrap_or(category.name.as_str());
@@ -215,16 +217,6 @@ async fn destroy(
         .exec(&ctx.db)
         .await?;
     Ok(StatusCode::NO_CONTENT.into_response())
-}
-
-fn parse_kind(body: &Value) -> Result<Option<i32>, ApiError> {
-    match body.get("kind") {
-        None | Some(Value::Null) => Ok(None),
-        Some(Value::String(value)) => views::parse_category_kind(value)
-            .map(Some)
-            .ok_or_else(ApiError::invalid_value),
-        Some(_) => Err(ApiError::invalid_value()),
-    }
 }
 
 async fn exists_name(

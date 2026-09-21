@@ -1,6 +1,6 @@
 use std::time::Instant;
 
-use serde_json::{json, Map, Value};
+use serde_json::{json, Value};
 
 pub const PROMPT_VERSION: &str = "v2";
 pub const STATUS_PENDING: i32 = 0;
@@ -327,9 +327,4 @@ pub fn schema() -> Value {
             "confidence": { "type": "number", "minimum": 0, "maximum": 1 }
         }
     })
-}
-
-#[allow(dead_code)]
-fn _map() -> Map<String, Value> {
-    Map::new()
 }

@@ -56,6 +56,87 @@ async fn creates_and_pauses_resumes_a_rule() {
 
 #[tokio::test]
 #[serial]
+async fn updates_a_rule_and_clears_nullable_fields() {
+    request::<App, _, _>(|request, ctx| async move {
+        let fixture = register_and_login(&request, &ctx).await;
+        let (name, value) = auth_header(&fixture.token);
+        let created = request
+            .post("/api/v1/recurring_rules")
+            .add_header(name.clone(), value.clone())
+            .json(&serde_json::json!({
+                "account_id": fixture.account_id,
+                "category_id": fixture.expense_category_id,
+                "kind": "expense",
+                "amount_cents": 1000,
+                "frequency": "daily",
+                "interval": 1,
+                "start_on": time::today().to_string(),
+                "note": "before",
+                "next_run_at": in_hours(1)
+            }))
+            .await;
+        assert_eq!(created.status_code(), 201);
+        let id = json_body(&created.text())["data"]["id"]
+            .as_str()
+            .unwrap()
+            .to_string();
+
+        // Partial update: changed fields apply, omitted fields stay.
+        let updated = request
+            .patch(&format!("/api/v1/recurring_rules/{id}"))
+            .add_header(name.clone(), value.clone())
+            .json(&serde_json::json!({ "amount_cents": 2500, "note": "after" }))
+            .await;
+        assert_eq!(updated.status_code(), 200);
+        let body = json_body(&updated.text());
+        assert_eq!(body["data"]["amount_cents"], 2500);
+        assert_eq!(body["data"]["note"], "after");
+        assert_eq!(body["data"]["interval"], 1);
+        assert_eq!(body["data"]["frequency"], "daily");
+
+        // Explicit null clears the nullable category; omitting it would not.
+        let cleared = request
+            .patch(&format!("/api/v1/recurring_rules/{id}"))
+            .add_header(name, value)
+            .json(&serde_json::json!({ "category_id": null }))
+            .await;
+        assert_eq!(cleared.status_code(), 200);
+        assert!(json_body(&cleared.text())["data"]["category_id"].is_null());
+    })
+    .await;
+}
+
+#[tokio::test]
+#[serial]
+async fn rejects_invalid_rule_updates() {
+    request::<App, _, _>(|request, ctx| async move {
+        let fixture = register_and_login(&request, &ctx).await;
+        let (name, value) = auth_header(&fixture.token);
+        let rule = create_rule(
+            &ctx.db,
+            &fixture.user_id,
+            &fixture.account_id,
+            0,
+            time::now_local() + Duration::hours(1),
+            None,
+            None,
+        )
+        .await;
+
+        let response = request
+            .patch(&format!("/api/v1/recurring_rules/{}", rule.id))
+            .add_header(name, value)
+            .json(&serde_json::json!({ "amount_cents": 0, "interval": 0 }))
+            .await;
+        assert_eq!(response.status_code(), 422);
+        let body = json_body(&response.text());
+        assert_eq!(body["error"]["code"], "validation_error");
+    })
+    .await;
+}
+
+#[tokio::test]
+#[serial]
 async fn lists_and_filters_rules_by_status() {
     request::<App, _, _>(|request, ctx| async move {
         let fixture = register_and_login(&request, &ctx).await;

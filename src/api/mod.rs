@@ -2,6 +2,7 @@ pub mod auth;
 pub mod error;
 pub mod extract;
 pub mod idempotency;
+pub mod params;
 pub mod request_id;
 pub mod time;
 pub mod util;

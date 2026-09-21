@@ -11,7 +11,9 @@ use sea_orm::{
 };
 use serde_json::{json, Value};
 
-use crate::api::{error::ApiError, time, util, validation::ValidationErrors, ApiResult, AuthUser};
+use crate::api::{
+    error::ApiError, params, time, util, validation::ValidationErrors, ApiResult, AuthUser,
+};
 use crate::app::AppContext;
 use crate::models::_entities::{accounts, recurring_rules, transactions};
 use crate::views;
@@ -54,8 +56,8 @@ async fn create(
     Json(body): Json<Value>,
 ) -> ApiResult<Response> {
     let name = body.get("name").and_then(Value::as_str).unwrap_or("");
-    let kind = parse_kind(&body)?;
-    let initial_balance = parse_balance(&body)?;
+    let kind = params::parse_enum_field(&body, "kind", views::parse_account_kind)?;
+    let initial_balance = params::parse_i32_field(&body, "initial_balance_cents")?;
 
     let mut errors = ValidationErrors::new();
     if name.trim().is_empty() {
@@ -76,16 +78,10 @@ async fn create(
         user_id: Set(user.id().to_string()),
         name: Set(name.trim().to_string()),
         kind: Set(kind.unwrap_or(0)),
-        icon: Set(body
-            .get("icon")
-            .and_then(Value::as_str)
-            .map(ToString::to_string)),
-        color: Set(body
-            .get("color")
-            .and_then(Value::as_str)
-            .map(ToString::to_string)),
+        icon: Set(params::string_field(&body, "icon")),
+        color: Set(params::string_field(&body, "color")),
         initial_balance_cents: Set(initial_balance.unwrap_or(0)),
-        currency: Set(string_field(&body, "currency").unwrap_or_else(|| "HKD".to_string())),
+        currency: Set(params::string_field(&body, "currency").unwrap_or_else(|| "HKD".to_string())),
         created_at: Set(now),
         updated_at: Set(now),
     }
@@ -107,8 +103,8 @@ async fn update(
     Json(body): Json<Value>,
 ) -> ApiResult<Response> {
     let account = find_scoped(&ctx.db, user.id(), &id).await?;
-    let kind = parse_kind(&body)?;
-    let initial_balance = parse_balance(&body)?;
+    let kind = params::parse_enum_field(&body, "kind", views::parse_account_kind)?;
+    let initial_balance = params::parse_i32_field(&body, "initial_balance_cents")?;
     let name = body.get("name").and_then(Value::as_str);
 
     let mut errors = ValidationErrors::new();
@@ -133,14 +129,14 @@ async fn update(
     if let Some(balance) = initial_balance {
         active.initial_balance_cents = Set(balance);
     }
-    if let Some(icon) = body.get("icon").and_then(Value::as_str) {
-        active.icon = Set(Some(icon.to_string()));
+    if let Some(icon) = params::string_field(&body, "icon") {
+        active.icon = Set(Some(icon));
     }
-    if let Some(color) = body.get("color").and_then(Value::as_str) {
-        active.color = Set(Some(color.to_string()));
+    if let Some(color) = params::string_field(&body, "color") {
+        active.color = Set(Some(color));
     }
-    if let Some(currency) = body.get("currency").and_then(Value::as_str) {
-        active.currency = Set(currency.to_string());
+    if let Some(currency) = params::string_field(&body, "currency") {
+        active.currency = Set(currency);
     }
     active.updated_at = Set(time::now_local());
     let account = active.update(&ctx.db).await.map_err(map_db_error)?;
@@ -182,39 +178,6 @@ async fn destroy(
         .exec(&ctx.db)
         .await?;
     Ok(StatusCode::NO_CONTENT.into_response())
-}
-
-fn string_field(body: &Value, key: &str) -> Option<String> {
-    body.get(key)
-        .and_then(Value::as_str)
-        .map(ToString::to_string)
-}
-
-fn parse_kind(body: &Value) -> Result<Option<i32>, ApiError> {
-    match body.get("kind") {
-        None | Some(Value::Null) => Ok(None),
-        Some(Value::String(value)) => views::parse_account_kind(value)
-            .map(Some)
-            .ok_or_else(ApiError::invalid_value),
-        Some(_) => Err(ApiError::invalid_value()),
-    }
-}
-
-fn parse_balance(body: &Value) -> Result<Option<i32>, ApiError> {
-    match body.get("initial_balance_cents") {
-        None | Some(Value::Null) => Ok(None),
-        Some(Value::Number(number)) => number
-            .as_i64()
-            .and_then(|value| i32::try_from(value).ok())
-            .map(Some)
-            .ok_or_else(ApiError::invalid_value),
-        Some(Value::String(value)) => value
-            .trim()
-            .parse::<i32>()
-            .map(Some)
-            .map_err(|_| ApiError::invalid_value()),
-        Some(_) => Err(ApiError::invalid_value()),
-    }
 }
 
 async fn exists_name(

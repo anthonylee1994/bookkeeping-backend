@@ -1,0 +1,53 @@
+{
+    "name": "bookkeeping-backend",
+    "version": "0.1.0",
+    "private": true,
+    "description": "Bookkeeping API backend (NestJS + TypeORM + SQLite)",
+    "license": "UNLICENSED",
+    "scripts": {
+        "build": "nest build",
+        "start": "nest start",
+        "start:dev": "nest start --watch",
+        "start:prod": "node dist/main.js",
+        "db:migrate": "tsx src/tasks/migrate.ts",
+        "db:normalize": "tsx src/tasks/normalize-sqlite-types.ts",
+        "maintenance:cleanup": "tsx src/tasks/maintenance.ts",
+        "maintenance:cleanup:prod": "node dist/tasks/maintenance.js",
+        "typecheck": "tsc --noEmit",
+        "format": "prettier --write \"{src,test}/**/*.{ts,json}\"",
+        "format:check": "prettier --check \"{src,test}/**/*.{ts,json}\"",
+        "test": "vitest run",
+        "test:watch": "vitest"
+    },
+    "dependencies": {
+        "@nestjs/common": "12.0.4",
+        "@nestjs/core": "12.0.4",
+        "@nestjs/platform-express": "12.0.4",
+        "@nestjs/typeorm": "12.0.1",
+        "bcryptjs": "3.0.3",
+        "better-sqlite3": "13.0.3",
+        "dotenv": "18.0.2",
+        "express": "5.2.1",
+        "jsonwebtoken": "9.0.3",
+        "reflect-metadata": "0.2.2",
+        "rxjs": "7.8.2",
+        "typeorm": "1.1.1"
+    },
+    "devDependencies": {
+        "@nestjs/cli": "12.0.3",
+        "@nestjs/testing": "12.0.4",
+        "@swc/core": "1.16.2",
+        "@types/better-sqlite3": "9.6.0",
+        "@types/express": "5.0.6",
+        "@types/jsonwebtoken": "9.0.10",
+        "@types/multer": "2.2.0",
+        "@types/node": "26.6.2",
+        "@types/supertest": "7.2.1",
+        "prettier": "3.9.8",
+        "supertest": "7.2.2",
+        "tsx": "4.23.15",
+        "typescript": "6.0.3",
+        "unplugin-swc": "2.0.0",
+        "vitest": "5.0.1"
+    }
+}

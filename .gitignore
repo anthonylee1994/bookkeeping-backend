@@ -1,11 +1,13 @@
-# Rust
-/target/
-**/*.rs.bk
+# Node
+/node_modules/
+/dist/
+/coverage/
 
 # Environment
 /.env
 /.env.*
 !.env.example
+!.env.test
 
 # SQLite databases + runtime data
 /storage/*
@@ -20,15 +22,12 @@
 !/log/.keep
 /tmp/*
 !/tmp/.keep
-!/tmp/pids/
-!/tmp/pids/.keep
 
 # Dokku local overrides (never commit secrets / machine-specific setup)
 /bin/dokku-setup.sh
 /docs/dokku-setup.local.md
 
-# Coverage / editor
-/coverage/
+# Editor
 .DS_Store
 .idea/
 .vscode/

@@ -2,11 +2,10 @@ name: CI
 
 on:
   push:
-    branches: [main, loco-rewrite]
+    branches: [main, loco-rewrite, nestjs-rewrite]
   pull_request:
 
 env:
-  CARGO_TERM_COLOR: always
   JWT_SECRET: ci-test-jwt-secret
   DEEPSEEK_API_KEY: ci-test-dummy-key
 
@@ -15,13 +14,20 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
-      - uses: dtolnay/rust-toolchain@stable
+      - uses: pnpm/action-setup@v4
         with:
-          components: rustfmt, clippy
-      - uses: Swatinem/rust-cache@v2
+          version: 12.3.4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: pnpm
+      - name: Install
+        run: pnpm install --frozen-lockfile
+      - name: Typecheck
+        run: pnpm typecheck
       - name: Format
-        run: cargo fmt --all -- --check
-      - name: Clippy
-        run: cargo clippy --all-targets -- -D warnings
+        run: pnpm format:check
       - name: Test
-        run: cargo test --all
+        run: pnpm test
+      - name: Build
+        run: pnpm build

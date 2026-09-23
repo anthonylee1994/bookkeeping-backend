@@ -1,14 +1,14 @@
 # 4. 業務規則
 
 1. **金額**：integer cents，永遠正數；方向由 `kind` 決定
-2. **時區**：全 app `Asia/Hong_Kong`。`config.time_zone = "Asia/Hong_Kong"`；`ActiveRecord::Base.default_timezone = :local`（Rails 只接受 `:utc` / `:local`，靠 OS `TZ=Asia/Hong_Kong` 令 local = Hong Kong）。DB 讀寫 **唔轉 UTC**。顯示同計算（summary、recurring catch-up、日/週/月邊界）一律用 `Time.zone`（Hong Kong）
+2. **時區**：全 app `Asia/Hong_Kong`。HK 冇 DST，所以用固定 `+08:00` offset；`src/common/time.ts` 用「UTC 欄位當作 HK wall clock」嘅 naive `Date` 表示法（只用 `Date.UTC` / `getUTC*`，process timezone 無關）。DB 讀寫 **唔轉 UTC**。顯示同計算（summary、recurring catch-up、日/週/月邊界）一律用呢套 helper
 3. **Weekly**：Asia/Hong_Kong Mon 00:00:00 至 Sun 23:59:59.999999
 4. **Monthly**：Asia/Hong_Kong 1 號 00:00:00 至月末 23:59:59.999999
 5. **Transfer**：唔計入 income/expense summary；獨立 `transfers` key；亦唔計入帳戶餘額（`account_balances` 只計 income/expense）
 6. **Recurring 產生邏輯**（request-time catch-up，**唔用 background job**）：
 
-- 已 authenticate 嘅 request 開頭呼叫 `RecurringCatchUp.call(user: current_user)`（全 app 已用 `config.time_zone = "Asia/Hong_Kong"`，唔需要 `Time.use_zone`）
-- 跳過：`AuthController`（`skip_before_action`）、`HealthController`（唔繼承 `ApplicationController`）
+- 已 authenticate 嘅 request 開頭呼叫 `RecurringService.catchUp(userId)`（`AuthGuard` 喺 handler 執行前跑）
+- 跳過：public routes，即 `AuthController`（register/login）、`HealthController`、`DocsController`（`@Public()`）
 - 只處理該 user `status = active` 且 `next_run_at <= now` 嘅 rule
 - 用 `RecurringOccurrence` unique index 保證 idempotent；併發 request 撞 unique → rescue 當已處理
 - 產生後 `last_run_at = now`，`next_run_at = 下次`
@@ -36,7 +36,7 @@
 - 用戶 confirm → 建立 transaction（`image_urls` + `source = ai`）＋回填 `AiImportLog.transaction_id`
 - cache hit 時仍會用當前 user 分類重新 `normalize_category_hint`，確保唔會漏出 AI 自創嘅分類名
 
-13. **AI JSON schema**（用 `json-schema` gem 驗證；回傳唔符 schema → `status = partial`）：
+13. **AI JSON schema**（`src/ai/deepseek.service.ts` 手寫驗證；回傳唔符 schema → `status = partial`）：
 
 ```json
 {
@@ -66,5 +66,5 @@ net_cents     = income_cents - expense_cents
 `by_category` / `by_account` 各自回 `income_cents` 同 `expense_cents`。
 
 16. **SSRF 防護**：`/ai/parse` 只收 whitelist host 嘅 `image_url`（`ENV["LIHKG_ALLOWED_HOSTS"]`，預設 `img.eservice-hk.net`）；backend 自己 fetch。非 whitelist → 400 `validation_error`
-17. **LIHKG 圖床風險**：用 stoplight circuit breaker，連續失敗 `LIHKG_CIRCUIT_FAILURES` 次（預設 5）開路 `LIHKG_CIRCUIT_COOLDOWN` 秒（預設 60）；circuit open 或 upstream 失敗回 502 `upstream_error`，log 詳細。出站 upload Faraday request **必須**帶 `Origin: https://lihkg.com`（硬編碼，圖床會 check Origin）
+17. **LIHKG 圖床風險**：用自建 circuit breaker（`src/receipts/lihkg.service.ts`），連續失敗 `LIHKG_CIRCUIT_FAILURES` 次（預設 5）開路 `LIHKG_CIRCUIT_COOLDOWN` 秒（預設 60）；circuit open 或 upstream 失敗回 502 `upstream_error`，log 詳細。出站 upload request **必須**帶 `Origin: https://lihkg.com`（硬編碼，圖床會 check Origin）
 18. **分頁上限**：`Pagy::DEFAULT[:max_per_page] = 100`；transactions / summaries 直接 offset + limit，`per_page` clamp 1..100（預設 25）

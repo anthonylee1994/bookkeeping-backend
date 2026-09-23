@@ -491,3 +491,89 @@ dokku run bookkeeping-backend sh -c '
 | `spec/models/*_spec.rb`                                      | 由對應 request spec + DB helpers 覆蓋                           |
 
 > 未 port：`spec/config/phase0_spec.rb`（Rails 專屬設定）同 query-count / N+1 regression 兩個測試（Rust 版聚合查詢數固定，冇現成 query counter；見 `03-business-rules`）。
+
+---
+
+### Phase N：loco.rs (Rust) → NestJS (TypeScript) rewrite（2026-09-23）
+
+**目標**：行為、API contract、DB schema 100% 不變，技術棧換成 NestJS + TypeORM（初版為 Prisma，見 Phase N2）。分支 `nestjs-rewrite`。
+
+**對照表**
+
+| 原 loco.rs 元件                                   | NestJS 對應                                                                  |
+| ------------------------------------------------- | ---------------------------------------------------------------------------- |
+| `src/models/_entities/*.rs`（SeaORM entity）      | TypeORM entities（`src/database/entities/*.entity.ts`，snake_case 欄位 1:1）+ `src/database/migrations/20260921000000-init.ts` |
+| `util::new_id()`                                  | `src/common/util.ts` `newId()`（`crypto.randomUUID()`）                       |
+| `src/controllers/*.rs`（axum handlers）           | `src/<module>/*.controller.ts`（NestJS controllers）                          |
+| `src/api/extract.rs` `AuthUser` extractor        | `src/auth/auth.guard.ts`（global `APP_GUARD`）+ `@Public()` / `@CurrentUser()` |
+| `AuthUser` extractor 內 catch-up                  | `AuthGuard` 呼叫 `RecurringService.catchUp()`                                 |
+| `src/api/error.rs` `ApiError`                     | `src/common/errors.ts` + `src/common/error.filter.ts`                         |
+| `src/api/params.rs` / `validation.rs`             | `src/common/params.ts` / `src/common/validation.ts`                           |
+| `src/api/time.rs`                                 | `src/common/time.ts`（naive `Date`：UTC 欄位 = HK wall clock）                |
+| `src/views/mod.rs`                                | `src/views/enums.ts` + `src/views/serializers.ts`                             |
+| `src/api/idempotency.rs`                          | `src/idempotency/idempotency.service.ts`                                      |
+| `src/middleware/rate_limit.rs`                    | `src/rate-limit/rate-limit.middleware.ts`                                     |
+| `src/middleware/cors.rs`                          | `src/app.setup.ts` `enableCors`                                               |
+| `src/api/request_id.rs`（tokio task-local）       | `src/common/request-id.ts`（`AsyncLocalStorage`）                             |
+| `src/services/recurring.rs`                       | `src/recurring/recurring.service.ts`                                          |
+| `src/controllers/dashboard.rs` / `summaries.rs`   | `src/dashboard/`、`src/summaries/` + `src/reports/`（共用聚合 helper）        |
+| `src/services/deepseek.rs`                        | `src/ai/deepseek.service.ts`（原生 `fetch`）                                  |
+| `src/services/lihkg.rs`                           | `src/receipts/lihkg.service.ts`（原生 `fetch` + FormData/Blob）               |
+| `src/tasks/maintenance.rs`                        | `src/tasks/maintenance.ts`（`pnpm maintenance:cleanup` / prod `node dist/tasks/maintenance.js`） |
+| `src/controllers/docs.rs`                         | `src/docs/docs.controller.ts`（回 `swagger/v1/swagger.yaml`）                 |
+| `src/controllers/health.rs`                       | `src/health/health.controller.ts`                                             |
+| `cargo loco start`                                | `pnpm start:dev`                                                              |
+| `cargo test`（loco testing + serial_test）        | Vitest + supertest（單 fork 序列，`test/*.spec.ts`）                           |
+| Dokku Dockerfile（Rust multi-stage）              | Dokku Dockerfile（Node multi-stage + TypeORM）                                  |
+
+**驗收**
+
+- [x] `pnpm test` 全綠（63 tests，9 spec files）
+- [x] `pnpm typecheck` 同 `pnpm format:check` 乾淨；`pnpm build` 成功
+- [x] SQLite schema（欄位、index、FK on_delete）同 loco.rs migration 一致（datetime/date 欄位改宣告 `varchar`，見 `01-data-models`）
+- [x] API response 格式（`data` / `meta` / `error`）同 loco.rs 一致
+- [x] JWT 用 HS256、payload `user_id`、唔寫唔驗 `exp`
+- [x] 舊 bcrypt 密碼可以登入
+- [x] `GET /health/db` 確認 WAL；`/api-docs` 見到 OpenAPI
+
+**測試遷移（`tests/requests/*.rs` → `test/*.spec.ts`）**
+
+| Rust test                          | NestJS test                        |
+| ---------------------------------- | ---------------------------------- |
+| `tests/requests/auth_spec.rs`      | `test/auth.spec.ts`                |
+| `tests/requests/accounts_spec.rs`  | `test/accounts.spec.ts`            |
+| `tests/requests/categories_spec.rs`| `test/categories.spec.ts`          |
+| `tests/requests/merchants_spec.rs` | `test/merchants.spec.ts`           |
+| `tests/requests/transactions_spec.rs` | `test/transactions.spec.ts`     |
+| `tests/requests/recurring_spec.rs` | `test/recurring.spec.ts`           |
+| `tests/requests/ai_spec.rs`（wiremock） | `test/ai.spec.ts`（自建 `node:http` mock server） |
+| `tests/requests/summaries_spec.rs` | `test/summaries.spec.ts`           |
+| `tests/requests/health_spec.rs`    | `test/health.spec.ts`              |
+
+> `src/api/auth.rs` 嘅 JWT unit test 同 `src/services/recurring.rs` 嘅 `next_occurrence` unit test，行為由 request specs（recurring backfill / catch-up）覆蓋；`next_occurrence` 嘅日期 clamp 邏輯內含喺 `src/recurring/recurring.service.ts`。未另設純 unit test。
+
+---
+
+### Phase N2：Prisma → TypeORM rewrite（2026-09-23）
+
+**目標**：行為、API contract、DB schema 100% 不變，ORM 由 Prisma 換成 **TypeORM 1 + better-sqlite3**。
+
+**對照表**
+
+| Prisma 元件                                          | TypeORM 對應                                                          |
+| ---------------------------------------------------- | --------------------------------------------------------------------- |
+| `prisma/schema.prisma` models                        | `src/database/entities/*.entity.ts`（`@Entity` / `@PrimaryColumn` / `@Column` / `@Index`） |
+| `PrismaService`（`src/prisma/prisma.module.ts`）     | `src/database/database.module.ts`（global `TypeOrmModule`，exports `DataSource` + repositories） |
+| `prisma migrate deploy`                              | `src/tasks/migrate.ts` + `src/database/migrations/*.ts`（`migrationsRun: true` 開機自動跑） |
+| `$queryRawUnsafe` / `$executeRawUnsafe`              | `DataSource.query()` / `better-sqlite3` raw connection                |
+| `$transaction([...])` / `$transaction(fn)`           | `DataSource.transaction(async (manager) => …)`                        |
+| Prisma unique code `P2002`                           | `isUniqueViolation()`（`src/database/db-errors.ts`，睇 SQLite `SQLITE_CONSTRAINT_UNIQUE`） |
+| PrismaClient in tests                                | `app.get(DataSource)` + `src/database/entities/*`（`test/helpers/*`）  |
+
+**驗收**
+
+- [x] `pnpm test` 全綠（81 tests，12 spec files）
+- [x] `pnpm typecheck` 同 `pnpm format:check` 乾淨；`pnpm build` 成功
+- [x] `node dist/tasks/migrate.js` / `dist/tasks/normalize-sqlite-types.js` / `dist/tasks/maintenance.js` 正常
+- [x] 舊 DB（有表但冇 migration history）可直接接軌：init migration 用 `CREATE TABLE/INDEX IF NOT EXISTS`，唔再需要 P3005 baseline
+- [x] `DATABASE_URL` 保留 `file:../storage/...` 舊值（`../` 開頭沿用舊 Prisma 解析邏輯，所以部署設定唔使改）

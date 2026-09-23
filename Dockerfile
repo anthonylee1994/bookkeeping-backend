@@ -1,25 +1,25 @@
 # syntax=docker/dockerfile:1
 
-FROM rust:1.98-slim-bookworm AS builder
+FROM node:22-bookworm-slim AS base
+RUN npm install -g pnpm@12.3.4
 WORKDIR /app
-RUN apt-get update && apt-get install -y --no-install-recommends \
-      build-essential pkg-config \
-    && rm -rf /var/lib/apt/lists/*
-COPY Cargo.toml Cargo.lock ./
-COPY migration ./migration
-COPY src ./src
-COPY config ./config
-COPY swagger ./swagger
-RUN cargo build --release --bin bookkeeping-backend-cli
 
-FROM debian:bookworm-slim AS runtime
-RUN apt-get update && apt-get install -y --no-install-recommends \
-      ca-certificates sqlite3 tzdata \
-    && rm -rf /var/lib/apt/lists/*
-ENV TZ=Asia/Hong_Kong
+FROM base AS build
+COPY package.json pnpm-lock.yaml pnpm-workspace.yaml ./
+RUN pnpm install --frozen-lockfile
+COPY tsconfig.json tsconfig.build.json nest-cli.json ./
+COPY src ./src
+RUN pnpm build
+
+FROM base AS runtime
+ENV NODE_ENV=production \
+    TZ=Asia/Hong_Kong \
+    DATABASE_URL=file:../storage/production.sqlite3
 WORKDIR /app
-COPY --from=builder /app/target/release/bookkeeping-backend-cli /app/bookkeeping-backend-cli
-COPY config ./config
+COPY --from=build /app/node_modules ./node_modules
+COPY --from=build /app/dist ./dist
+COPY package.json pnpm-lock.yaml pnpm-workspace.yaml ./
+COPY swagger ./swagger
 COPY docker-entrypoint.sh /app/docker-entrypoint.sh
 RUN chmod +x /app/docker-entrypoint.sh && mkdir -p /app/storage
 EXPOSE 3000

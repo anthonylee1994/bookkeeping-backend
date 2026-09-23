@@ -5,15 +5,13 @@
 所有 model 用 **UUID v4** 做 primary key，**唔用** integer autoincrement：
 
 - SQLite 冇 native UUID type：欄位用 `varchar(36)` 存 canonical UUID（`8-4-4-4-12` lowercase，例如 `550e8400-e29b-41d4-a716-446655440000`）
-- `config/initializers/sqlite_uuid.rb` 將 `:uuid` map 做 `varchar(36)`，令 `create_table ..., id: :uuid` 同 `t.references ..., type: :uuid` 行得通
-- `config.generators`：`g.orm :active_record, primary_key_type: :uuid`
-- `ApplicationRecord`：
-  - `before_create`：`self.id ||= SecureRandom.uuid`（SQLite 冇 `gen_random_uuid()`）
-  - `self.implicit_order_column = "created_at"`（UUID v4 唔按插入順序，`Model.first` / `.last` 唔可以靠 `id`）
-- 所有 FK（`t.references` / `t.belongs_to`）一律 `type: :uuid`
+- NestJS 用 `crypto.randomUUID()` 生成 id（`src/common/util.ts` 的 `newId()`）；TypeORM entity 有 `@PrimaryColumn` 但唔靠 DB default
+- TypeORM entity 用 snake_case 欄位名，同 DB column 1:1（唔用 naming strategy 轉名）
+- 所有 FK 一律 `varchar(36)`，constraint 用 `ON DELETE CASCADE / SET NULL / RESTRICT`（見 `src/database/migrations/20260921000000-init.ts`）
 - API JSON 同 path param 嘅 `id` / `*_id` 全部係 UUID string
 - JWT payload `user_id` 都係 UUID string
-- `schema.rb` dump 可能寫 `id: :string, limit: 36`（SQLite 冇 uuid SQL type）；migration 一律寫 `id: :uuid`
+- **排序**：UUID v4 唔按插入順序，列表一律明確 `orderBy` `created_at`（或指定欄位），唔可以靠 `id`
+- **日期／時間**：entity 型別一律 `string`；DB 欄位宣告 `varchar`（TEXT affinity）。canonical 值：datetime `YYYY-MM-DD HH:MM:SS.SSS`、date `YYYY-MM-DD`（HK local wall time，唔轉 UTC）。字串排序等同時間排序，range filter / order by 直接用字串比較
 
 ### 2.1 User
 

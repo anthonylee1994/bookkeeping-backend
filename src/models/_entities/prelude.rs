@@ -1,9 +1,0 @@
-pub use super::accounts::Entity as Accounts;
-pub use super::ai_import_logs::Entity as AiImportLogs;
-pub use super::categories::Entity as Categories;
-pub use super::idempotency_keys::Entity as IdempotencyKeys;
-pub use super::merchants::Entity as Merchants;
-pub use super::recurring_occurrences::Entity as RecurringOccurrences;
-pub use super::recurring_rules::Entity as RecurringRules;
-pub use super::transactions::Entity as Transactions;
-pub use super::users::Entity as Users;

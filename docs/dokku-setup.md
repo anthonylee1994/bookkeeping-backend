@@ -1,6 +1,6 @@
-# Dokku 部署（loco.rs / Rust）
+# Dokku 部署（NestJS / TypeORM）
 
-App name：`bookkeeping-backend`，用 Dockerfile buildpack（multi-stage Rust build）。
+App name：`bookkeeping-backend`，用 Dockerfile buildpack（multi-stage Node build）。
 
 ## 首次設定
 
@@ -14,9 +14,9 @@ dokku checks:enable bookkeeping-backend
 dokku checks:set bookkeeping-backend web.wait-to-retire 30
 dokku checks:set bookkeeping-backend web.initial-delay 10
 dokku config:set --no-restart bookkeeping-backend \
-  LOCO_ENV=production \
-  BINDING=0.0.0.0 \
-  DATABASE_URL='sqlite:///app/storage/production.sqlite3?mode=rwc' \
+  NODE_ENV=production \
+  HOST=0.0.0.0 \
+  DATABASE_URL='file:../storage/production.sqlite3' \
   JWT_SECRET=... \
   CORS_ORIGINS=https://book.on99.app \
   LIHKG_UPLOAD_URL='https://img.eservice-hk.net/api.php?version=2' \
@@ -32,18 +32,20 @@ dokku ps:scale bookkeeping-backend web=1
 
 或者抄 `bin/dokku-setup.sh.example` 做 `bin/dokku-setup.sh`（已 gitignore）再改 secrets。
 
+> `DATABASE_URL` 用 `file:../storage/production.sqlite3`；`resolveDatabasePath()` 會沿用舊 Prisma 相對 `prisma/schema.prisma` 嘅解析，所以實際檔案喺 `/app/storage/production.sqlite3`。現有部署呢個值唔使改。
+
 ## 部署
 
 ```bash
 git push dokku main
 ```
 
-`docker-entrypoint.sh` 會先 `bookkeeping-backend-cli db migrate` 再 `start`，所以唔使另設 release process。
+`docker-entrypoint.sh` 會先 `node dist/tasks/migrate.js`（TypeORM migration）再 `node dist/main.js`，所以唔使另設 release process。
 
 ## 運維
 
 - Host cron 每日跑：
-  - `dokku run bookkeeping-backend ./bookkeeping-backend-cli task maintenance:cleanup`
+  - `dokku run bookkeeping-backend node dist/tasks/maintenance.js`
   - `scripts/backup.sh`
 - SQLite 檔案全部喺 `/app/storage`（primary：`production.sqlite3`）。
 - 只有 web process，冇 worker（recurring 用 request-time catch-up）。

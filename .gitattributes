@@ -1,4 +1,4 @@
 # See https://git-scm.com/docs/gitattributes for more about git attribute files.
 
-# This is a binary crate, keep Cargo.lock in reviewable diffs.
-Cargo.lock linguist-generated=false
+# Keep the pnpm lockfile in reviewable diffs.
+pnpm-lock.yaml linguist-generated=false

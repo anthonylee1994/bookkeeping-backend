@@ -292,4 +292,82 @@ describe("receipts & AI", () => {
         const updated = await findLog(dataSource, log.id);
         expect(updated.transaction_id).toBe(response.body.data.id);
     });
+
+    it("interpret parses a natural-language sentence into a text preview", async () => {
+        const server = await mockServer(request =>
+            request.method === "POST" && request.path === "/chat/completions"
+                ? {
+                      status: 200,
+                      headers: {"content-type": "application/json"},
+                      body: deepseekBody({amount_cents: 4500, kind: "expense", occurred_at: "2026-09-14T10:00:00+08:00", merchant_name: "茶餐廳", confidence: 0.9}),
+                  }
+                : {status: 404}
+        );
+
+        const fixture = await registerAndLogin(client);
+        const response = await client.post("/api/v1/ai/interpret").set(authHeader(fixture.token)).send({text: "尋日茶餐廳 45 蚊"});
+
+        expect(response.status).toBe(200);
+        expect(response.body.data.source).toBe("text");
+        expect(response.body.data.image_urls).toEqual([]);
+        expect(response.body.data.parsed.amount_cents).toBe(4500);
+
+        const cached = await client.post("/api/v1/ai/interpret").set(authHeader(fixture.token)).send({text: "尋日茶餐廳 45 蚊"});
+        expect(cached.body.data.id).toBe(response.body.data.id);
+        expect(server.countRequests("/chat/completions")).toBe(1);
+    });
+
+    it("interpret rejects blank or oversized text", async () => {
+        await mockServer(() => ({status: 404}));
+        const fixture = await registerAndLogin(client);
+        const headers = authHeader(fixture.token);
+
+        const blank = await client.post("/api/v1/ai/interpret").set(headers).send({text: "   "});
+        expect(blank.status).toBe(422);
+
+        const tooLong = await client
+            .post("/api/v1/ai/interpret")
+            .set(headers)
+            .send({text: "a".repeat(501)});
+        expect(tooLong.status).toBe(422);
+    });
+
+    it("interpret maps a DeepSeek failure to a 502", async () => {
+        await mockServer(request => (request.path === "/chat/completions" ? {status: 500} : {status: 404}));
+        const fixture = await registerAndLogin(client);
+
+        const response = await client.post("/api/v1/ai/interpret").set(authHeader(fixture.token)).send({text: "午餐 45 蚊"});
+        expect(response.status).toBe(502);
+    });
+
+    it("confirm materialises a transaction from a natural-language preview", async () => {
+        const server = await mockServer(request =>
+            request.method === "POST" && request.path === "/chat/completions"
+                ? {
+                      status: 200,
+                      headers: {"content-type": "application/json"},
+                      body: deepseekBody({amount_cents: 4500, kind: "expense", occurred_at: "2026-09-14T10:00:00+08:00", confidence: 0.9}),
+                  }
+                : {status: 404}
+        );
+
+        const fixture = await registerAndLogin(client);
+        const preview = await client.post("/api/v1/ai/interpret").set(authHeader(fixture.token)).send({text: "午餐 45 蚊"});
+        expect(preview.status).toBe(200);
+
+        const response = await client.post("/api/v1/ai/confirm").set(authHeader(fixture.token)).send({
+            ai_import_log_id: preview.body.data.id,
+            account_id: fixture.accountId,
+            amount_cents: 4500,
+            kind: "expense",
+            occurred_at: "2026-09-14T10:00:00+08:00",
+        });
+
+        expect(response.status).toBe(201);
+        expect(response.body.data.source).toBe("ai");
+        expect(response.body.data.image_urls).toEqual([]);
+
+        const stored = server.requests.find(request => request.path === "/chat/completions");
+        expect(stored).toBeDefined();
+    });
 });

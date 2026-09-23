@@ -141,8 +141,9 @@
 - `id` uuid PK
 - `user_id` uuid FK, null: false, index
 - `image_urls` json, default: `[]`, null: false
-- `image_sha256` string, null: false, index
+- `image_sha256` string, null: false, index（圖片來源係圖檔 hash；文字來源係句子嘅 sha256，共用同一 cache lookup）
 - `parse_signature` string, nullable（= `Digest::SHA256.hexdigest(PROMPT_VERSION + user 分類名單)`；改名／加減分類或 bump prompt 都會令 cache 失效）
+- `source` string, default: "receipt"（`receipt` 圖片單據／`text` 自然語言打字記帳）
 - `provider` string, default: "deepseek"
 - `model` string, default: "deepseek-flash"
 - `tokens_in` integer

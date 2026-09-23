@@ -158,6 +158,7 @@ export interface AiPayloadInput {
 export function aiPayload(input: AiPayloadInput): Record<string, unknown> {
     return {
         id: input.log.id,
+        source: input.log.source ?? "receipt",
         image_urls: jsonParseArray(input.log.image_urls),
         sha256: input.log.image_sha256,
         status: aiStatusName(input.log.status),

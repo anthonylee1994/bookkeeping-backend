@@ -76,11 +76,14 @@
 | ------ | ------------------ | ------------------------------------------------------------------ |
 | POST   | `/receipts/upload` | 上傳圖片 → LIHKG → 回 `{ url, sha256 }`（**唔**寫 Attachment）     |
 | POST   | `/ai/parse`        | 傳 `image_url` → DeepSeek `deepseek-flash` → preview               |
+| POST   | `/ai/interpret`    | 傳 `text`（1–500 字）→ DeepSeek 解析一句自然語言 → 同一款 preview |
 | POST   | `/ai/confirm`      | 用戶確認 → 建立 transaction（寫入 `image_urls`），關聯 AiImportLog |
 
 > **注意**：`/ai/parse` 只接受 whitelist host 嘅 URL（預設 `img.eservice-hk.net`），防 SSRF。唔用 Attachment model。
 
-**`/ai/parse`**：`{ "image_url": "https://..." }` → 回 `{ id, image_urls, sha256, status, parsed, suggested_category_id, raw_response, error, tokens_in, tokens_out, latency_ms }`。`status = failed` 回 502 `upstream_error`；`partial` 回 200。
+**`/ai/parse`**：`{ "image_url": "https://..." }` → 回 `{ id, source, image_urls, sha256, status, parsed, suggested_category_id, raw_response, error, tokens_in, tokens_out, latency_ms }`。`status = failed` 回 502 `upstream_error`；`partial` 回 200。
+
+**`/ai/interpret`**：`{ "text": "尋日茶餐廳 45 蚊" }` → 同一款 preview（`source = text`、`image_urls = []`）。缺 `text`／空白／超過 500 字 → 422 `validation_error`；`text` 唔似交易（model 回 `amount_cents = null`）→ 200 `status = partial`；DeepSeek 失敗 → 502 `upstream_error`。後端會開一條 `source = text` 嘅 `AiImportLog`，所以 `/ai/confirm` 可以照用（`image_urls = []`）。
 
 **`/ai/confirm`**：body 需帶 `ai_import_log_id`（或 `import_log_id`）＋ transaction 欄位；建 transaction（`source = ai`，`image_urls` 未提供時用 log 嘅），回填 `AiImportLog.transaction_id`。支援 `Idempotency-Key`。`receipts/upload` 成功回 201。
 

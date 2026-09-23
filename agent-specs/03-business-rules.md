@@ -36,6 +36,7 @@
 - 回傳 preview JSON（唔直接入帳）：`parsed`、`suggested_category_id`（category_hint 對得上當前 user 分類先有值，否則 nil）、`status`、`raw_response`、`error`、tokens、latency
 - 用戶 confirm → 建立 transaction（`image_urls` + `source = ai`）＋回填 `AiImportLog.transaction_id`
 - cache hit 時仍會用當前 user 分類重新 `normalize_category_hint`，確保唔會漏出 AI 自創嘅分類名
+- 自然語言打字記帳（`/ai/interpret`）行同一套流程：`image_sha256 = sha256(text)`、`parse_signature` 帶 `text` marker、`source = text`、`image_urls = []`；prompt 會釘住當前香港時間俾 model 解析相對日期（今日／尋日），句子當作不可信用戶資料（防 prompt injection）。輸出一樣要過同一套 JSON 驗證；唔似交易（`amount_cents = null`）→ `status = partial`，前端當「解讀唔到」處理
 
 13. **AI JSON schema**（`src/ai/deepseek.service.ts` 手寫驗證；回傳唔符 schema → `status = partial`）：
 

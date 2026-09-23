@@ -17,6 +17,9 @@ import {TransactionsService} from "../transactions/transactions.service";
 import {aiPayload, transactionPayloadWithNet} from "../views/serializers";
 import {DeepseekService, DeepSeekError, PROMPT_VERSION, STATUS_SUCCESS} from "./deepseek.service";
 
+/** 自然語言打字記帳嘅輸入上限（字元）。 */
+export const MAX_INTERPRET_TEXT = 500;
+
 interface CategoryInfo {
     id: string;
     kind: number;
@@ -159,6 +162,87 @@ export class AiController {
             image_urls: JSON.stringify([url]),
             image_sha256: sha,
             parse_signature: signature,
+            provider: "deepseek",
+            model: envOr("DEEPSEEK_MODEL", "deepseek-flash"),
+            tokens_in: outcome.tokens_in,
+            tokens_out: outcome.tokens_out,
+            latency_ms: outcome.latency_ms,
+            status: outcome.status,
+            raw_response: outcome.raw_response,
+            parsed_json: parsed === null ? null : JSON.stringify(parsed),
+            error_message: outcome.error_message,
+            transaction_id: null,
+            idempotency_key: null,
+            created_at: now,
+            updated_at: now,
+        });
+
+        return {data: this.cachedPayload(log, categoryInfos)};
+    }
+
+    private interpretSignature(categoryInfos: CategoryInfo[]): string {
+        const keys = categoryInfos.map(category => `${kindKey(category.kind)}:${category.name}`).sort();
+        return sha256Hex(`text\u0000${PROMPT_VERSION}\u0000${keys.join("\u0000")}`);
+    }
+
+    /**
+     * 自然語言打字記帳：將一句文字交俾 DeepSeek，開一條 `source = text` 嘅
+     * `AiImportLog`，回同 `/ai/parse` 一樣嘅 preview envelope，令前端可以重用
+     * 覆核流程、`/ai/confirm` 亦原封不動用得返。
+     */
+    @Post("interpret")
+    @HttpCode(200)
+    async interpret(@CurrentUser() user: User, @Body() body: JsonObject): Promise<unknown> {
+        if (typeof body.text !== "string" || body.text.trim() === "") {
+            throw ApiError.parameterMissing("text");
+        }
+        const text = body.text.trim();
+        if (text.length > MAX_INTERPRET_TEXT) {
+            throw new ApiError(422, "validation_error", `text 不可超過 ${MAX_INTERPRET_TEXT} 字`);
+        }
+
+        const sha = sha256Hex(text);
+        const categoryInfos = await this.loadCategoryInfos(user.id);
+        const signature = this.interpretSignature(categoryInfos);
+
+        const cutoff = time.toDbDatetime(time.addHours(time.nowLocal(), -this.aiCacheHours()));
+        const cached = await this.importLogs.findOne({
+            where: {
+                user_id: user.id,
+                image_sha256: sha,
+                parse_signature: signature,
+                status: STATUS_SUCCESS,
+                created_at: MoreThan(cutoff),
+            },
+            order: {created_at: "DESC"},
+        });
+
+        if (cached) {
+            return {data: this.cachedPayload(cached, categoryInfos)};
+        }
+
+        const refs = categoryInfos.map(category => ({kind: category.kind, name: category.name}));
+
+        let outcome;
+        try {
+            outcome = await this.deepseek.callInterpret(text, refs);
+        } catch (error) {
+            if (error instanceof DeepSeekError) {
+                throw ApiError.upstreamError(error.message);
+            }
+            throw error;
+        }
+
+        const parsed = outcome.parsed === null ? null : normalizeCategoryHint(outcome.parsed, categoryInfos);
+
+        const now = time.toDbDatetime(time.nowLocal());
+        const log = await this.importLogs.save({
+            id: newId(),
+            user_id: user.id,
+            image_urls: JSON.stringify([]),
+            image_sha256: sha,
+            parse_signature: signature,
+            source: "text",
             provider: "deepseek",
             model: envOr("DEEPSEEK_MODEL", "deepseek-flash"),
             tokens_in: outcome.tokens_in,

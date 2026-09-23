@@ -27,7 +27,7 @@ function rawRequest(body: unknown): RawBodyRequest<Request> {
 describe("AiController (unit)", () => {
     let importLogs: MockRepo;
     let categories: MockRepo;
-    let deepseek: {call: ReturnType<typeof vi.fn>};
+    let deepseek: {call: ReturnType<typeof vi.fn>; callInterpret: ReturnType<typeof vi.fn>};
     let transactions: {createValidated: ReturnType<typeof vi.fn>};
     let idempotency: {wrap: ReturnType<typeof vi.fn>};
     let controller: AiController;
@@ -35,7 +35,7 @@ describe("AiController (unit)", () => {
     beforeEach(() => {
         importLogs = mockRepo();
         categories = mockRepo();
-        deepseek = {call: vi.fn()};
+        deepseek = {call: vi.fn(), callInterpret: vi.fn()};
         transactions = {createValidated: vi.fn()};
         idempotency = {wrap: vi.fn().mockImplementation(async (options: {run: () => Promise<unknown>}) => options.run())};
         controller = new AiController(
@@ -99,6 +99,54 @@ describe("AiController (unit)", () => {
         deepseek.call.mockRejectedValue(new DeepSeekError("upstream down"));
 
         await expect(controller.parse(userFixture({id: USER}), {image_url: "http://127.0.0.1/receipt.jpg"})).rejects.toMatchObject({status: 502, code: "upstream_error"});
+    });
+
+    it("interpret requires text", async () => {
+        await expect(controller.interpret(userFixture({id: USER}), {})).rejects.toMatchObject({status: 422});
+    });
+
+    it("interpret rejects text over the limit", async () => {
+        await expect(controller.interpret(userFixture({id: USER}), {text: "a".repeat(501)})).rejects.toMatchObject({status: 422, code: "validation_error"});
+    });
+
+    it("interpret calls DeepSeek and stores a text-sourced log", async () => {
+        importLogs.findOne.mockResolvedValue(null);
+        categories.find.mockResolvedValue([categoryFixture({id: "c1", kind: 1, name: "飲食"})]);
+        deepseek.callInterpret.mockResolvedValue({
+            parsed: {amount_cents: 500, kind: "expense", occurred_at: "2026-09-14T10:00:00+08:00", category_hint: "飲食"},
+            raw_response: "{}",
+            error_message: null,
+            tokens_in: 10,
+            tokens_out: 5,
+            latency_ms: 20,
+            status: 1,
+        });
+
+        const result = (await controller.interpret(userFixture({id: USER}), {text: " 午餐 5 蚊 "})) as {data: Record<string, unknown>};
+
+        expect(deepseek.callInterpret).toHaveBeenCalledWith("午餐 5 蚊", [{kind: 1, name: "飲食"}]);
+        const saved = importLogs.save.mock.calls[0]?.[0] as AiImportLog;
+        expect(saved).toMatchObject({source: "text", image_urls: "[]", status: 1});
+        expect(result.data).toMatchObject({source: "text", suggested_category_id: "c1"});
+        expect(result.data.parsed).toMatchObject({amount_cents: 500});
+    });
+
+    it("interpret returns a fresh cache hit without calling DeepSeek", async () => {
+        importLogs.findOne.mockResolvedValue(importLogFixture({id: "log-text", source: "text", status: 1, parsed_json: JSON.stringify({amount_cents: 1234, kind: "expense"})}));
+        categories.find.mockResolvedValue([]);
+
+        const result = (await controller.interpret(userFixture({id: USER}), {text: "x"})) as {data: Record<string, unknown>};
+
+        expect(result.data).toMatchObject({id: "log-text", source: "text"});
+        expect(deepseek.callInterpret).not.toHaveBeenCalled();
+    });
+
+    it("interpret maps a DeepSeek failure to a 502", async () => {
+        importLogs.findOne.mockResolvedValue(null);
+        categories.find.mockResolvedValue([]);
+        deepseek.callInterpret.mockRejectedValue(new DeepSeekError("upstream down"));
+
+        await expect(controller.interpret(userFixture({id: USER}), {text: "午餐"})).rejects.toMatchObject({status: 502, code: "upstream_error"});
     });
 
     it("confirm requires an import log id", async () => {

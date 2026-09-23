@@ -223,6 +223,7 @@ export function importLogFixture(overrides: Partial<AiImportLog> = {}): AiImport
         image_urls: JSON.stringify(["https://img.eservice-hk.net/a.jpg"]),
         image_sha256: "a".repeat(64),
         parse_signature: null,
+        source: "receipt",
         provider: "deepseek",
         model: "deepseek-flash",
         tokens_in: null,

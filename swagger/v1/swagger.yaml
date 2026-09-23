@@ -301,6 +301,23 @@ paths:
               required: [image_url]
               properties: { image_url: { type: string, format: uri } }
       responses: { '200': { description: AI preview } }
+  /api/v1/ai/interpret:
+    post:
+      tags: [Receipts and AI]
+      security: [{ bearerAuth: [] }]
+      summary: Interpret a natural-language transaction into an AI preview
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [text]
+              properties: { text: { type: string, minLength: 1, maxLength: 500 } }
+      responses:
+        '200': { description: 'AI preview（source=text，無 image_urls；status 可為 partial）' }
+        '422': { description: text missing／blank／over 500 characters }
+        '502': { description: DeepSeek is unavailable }
   /api/v1/ai/confirm:
     post:
       tags: [Receipts and AI]

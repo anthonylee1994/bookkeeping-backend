@@ -116,6 +116,42 @@ describe("DeepseekService (unit)", () => {
         expect(body.messages[0]?.content[0]?.text).toContain("no user-defined categories");
     });
 
+    describe("callInterpret", () => {
+        it("throws when the api key is missing", async () => {
+            vi.stubEnv("DEEPSEEK_API_KEY", "");
+            await expect(service.callInterpret("午餐 50", [])).rejects.toBeInstanceOf(DeepSeekError);
+        });
+
+        it("parses a valid completion and sends the sentence with the pinned date", async () => {
+            const fetchMock = vi.fn().mockResolvedValue(llm(valid));
+            vi.stubGlobal("fetch", fetchMock);
+
+            const outcome = await service.callInterpret("尋日午餐 12.34", [
+                {kind: 1, name: "飲食"},
+                {kind: 0, name: "薪水"},
+            ]);
+
+            expect(outcome.status).toBe(STATUS_SUCCESS);
+            expect(outcome.parsed).toMatchObject({amount_cents: 1234, kind: "expense"});
+
+            const body = JSON.parse(fetchMock.mock.calls[0]?.[1]?.body as string) as {messages: Array<{content: string}>};
+            const prompt = body.messages[0]?.content ?? "";
+            expect(prompt).toContain("尋日午餐 12.34");
+            expect(prompt).toContain("current Hong Kong date-time");
+            expect(prompt).toContain('EXPENSE categories: ["飲食"]');
+            expect(prompt).toContain('INCOME categories: ["薪水"]');
+        });
+
+        it("flags a sentence with no positive amount as partial", async () => {
+            vi.stubGlobal("fetch", vi.fn().mockResolvedValue(llm(JSON.stringify({amount_cents: null, kind: "expense", occurred_at: "2026-09-14T10:00:00+08:00"}))));
+
+            const outcome = await service.callInterpret("今日天氣好", []);
+
+            expect(outcome.status).toBe(STATUS_PARTIAL);
+            expect(outcome.error_message).toContain("amount_cents");
+        });
+    });
+
     describe("callInsight", () => {
         const factSheet = "期間：2026年9月\n收入：HK$1,000.00\n支出：HK$400.00\n淨額：HK$600.00";
 

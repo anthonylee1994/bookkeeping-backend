@@ -5,6 +5,7 @@ import type {BetterSqlite3DataSourceOptions} from "typeorm/driver/better-sqlite3
 import {ENTITIES} from "./entities";
 import {InitSchema20260921000000} from "./migrations/20260921000000-init";
 import {SummaryInsights20260923000000} from "./migrations/20260923000000-summary-insights";
+import {AiImportLogSource20260923010000} from "./migrations/20260923010000-ai-import-log-source";
 
 const DEFAULT_DATABASE_URL = "file:../storage/development.sqlite3";
 
@@ -37,7 +38,7 @@ export function buildDataSourceOptions(overrides: Partial<BetterSqlite3DataSourc
         type: "better-sqlite3",
         database: resolveDatabasePath(),
         entities: ENTITIES,
-        migrations: [InitSchema20260921000000, SummaryInsights20260923000000],
+        migrations: [InitSchema20260921000000, SummaryInsights20260923000000, AiImportLogSource20260923010000],
         migrationsTableName: "migrations",
         migrationsRun: true,
         synchronize: false,

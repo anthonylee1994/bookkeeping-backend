@@ -22,6 +22,10 @@ export class AiImportLog {
     @Column({type: "varchar", nullable: true})
     parse_signature!: string | null;
 
+    /** Origin of the parse: `receipt`（圖片）或 `text`（自然語言打字記帳）。 */
+    @Column({type: "varchar", default: "receipt"})
+    source!: string;
+
     @Column({type: "varchar", default: "deepseek"})
     provider!: string;
 

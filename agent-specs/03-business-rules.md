@@ -2,7 +2,7 @@
 
 1. **金額**：integer cents，永遠正數；方向由 `kind` 決定
 2. **時區**：全 app `Asia/Hong_Kong`。HK 冇 DST，所以用固定 `+08:00` offset；`src/common/time.ts` 用「UTC 欄位當作 HK wall clock」嘅 naive `Date` 表示法（只用 `Date.UTC` / `getUTC*`，process timezone 無關）。DB 讀寫 **唔轉 UTC**。顯示同計算（summary、recurring catch-up、日/週/月邊界）一律用呢套 helper
-   - **時間欄位儲存格式**：datetime 欄位（`occurred_at` / `next_run_at` / `created_at` …）以 TEXT 存 naive `YYYY-MM-DD HH:MM:SS.SSS`。舊 Rails / loco.rs 資料可能冇小數部分（`...HH:MM:SS`）或帶微秒，而 SQLite 對 TEXT 係逐字節排序：冇小數字串會排喺同一時刻嘅 `.SSS` **之前**。因此所有日期範圍查詢（`/summaries`、`/dashboard`、transactions list）**必須**用 `src/common/datetime-range.ts` 嘅 `datetimeRange(from, to)` — lower bound 取秒精度（含）、upper bound 取下一秒（唔含），否則啱啱落喺期間起點（例如 9 月 1 號 00:00:00）嘅交易會被漏掉
+    - **時間欄位儲存格式**：datetime 欄位（`occurred_at` / `next_run_at` / `created_at` …）以 TEXT 存 naive `YYYY-MM-DD HH:MM:SS.SSS`。舊 Rails / loco.rs 資料可能冇小數部分（`...HH:MM:SS`）或帶微秒，而 SQLite 對 TEXT 係逐字節排序：冇小數字串會排喺同一時刻嘅 `.SSS` **之前**。因此所有日期範圍查詢（`/summaries`、`/dashboard`、transactions list）**必須**用 `src/common/datetime-range.ts` 嘅 `datetimeRange(from, to)` — lower bound 取秒精度（含）、upper bound 取下一秒（唔含），否則啱啱落喺期間起點（例如 9 月 1 號 00:00:00）嘅交易會被漏掉
 3. **Weekly**：Asia/Hong_Kong Mon 00:00:00 至 Sun 23:59:59.999999
 4. **Monthly**：Asia/Hong_Kong 1 號 00:00:00 至月末 23:59:59.999999
 5. **Transfer**：唔計入 income/expense summary；獨立 `transfers` key；亦唔計入帳戶餘額（`account_balances` 只計 income/expense）
@@ -15,9 +15,9 @@
 - 產生後 `last_run_at = now`，`next_run_at = 下次`
 - 若 `end_on` 已過 → status = ended
 - **Backfill 規則**：
-  - `RECURRING_BACKFILL_ENABLED=false`（預設）：只 materialize 最後一個 due occurrence（即「今日」），其餘 due occurrence 寫 RecurringOccurrence 但 `transaction_id = nil`
-  - `RECURRING_BACKFILL_ENABLED=true`：補最多 `RECURRING_BACKFILL_MAX_DAYS`（預設 90）日，較早嘅 occurrence 只寫 occurrence，超出上限就 skip 並 log warning
-  - 無論開唔開，每個 due occurrence 都會寫 RecurringOccurrence，避免重複
+    - `RECURRING_BACKFILL_ENABLED=false`（預設）：只 materialize 最後一個 due occurrence（即「今日」），其餘 due occurrence 寫 RecurringOccurrence 但 `transaction_id = nil`
+    - `RECURRING_BACKFILL_ENABLED=true`：補最多 `RECURRING_BACKFILL_MAX_DAYS`（預設 90）日，較早嘅 occurrence 只寫 occurrence，超出上限就 skip 並 log warning
+    - 無論開唔開，每個 due occurrence 都會寫 RecurringOccurrence，避免重複
 - 刪咗由 recurring 產生嘅 transaction：occurrence 保留、`transaction_id = nil`，**唔會**再為該日自動產生
 - `run_now`：若該 `occurred_on` 未有 transaction，補建並關聯；已有 → 409 `already_materialized`
 - `skip_next`：為下一次寫 RecurringOccurrence（`transaction_id = nil`），推進 `next_run_at`
@@ -41,17 +41,17 @@
 
 ```json
 {
-  "type": "object",
-  "required": ["amount_cents", "kind", "occurred_at"],
-  "properties": {
-    "amount_cents": { "type": "integer", "minimum": 1 },
-    "kind": { "enum": ["income", "expense"] },
-    "occurred_at": { "type": "string", "format": "date-time" },
-    "merchant_name": { "type": ["string", "null"] },
-    "category_hint": { "type": ["string", "null"] },
-    "note": { "type": ["string", "null"] },
-    "confidence": { "type": "number", "minimum": 0, "maximum": 1 }
-  }
+    "type": "object",
+    "required": ["amount_cents", "kind", "occurred_at"],
+    "properties": {
+        "amount_cents": {"type": "integer", "minimum": 1},
+        "kind": {"enum": ["income", "expense"]},
+        "occurred_at": {"type": "string", "format": "date-time"},
+        "merchant_name": {"type": ["string", "null"]},
+        "category_hint": {"type": ["string", "null"]},
+        "note": {"type": ["string", "null"]},
+        "confidence": {"type": "number", "minimum": 0, "maximum": 1}
+    }
 }
 ```
 

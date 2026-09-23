@@ -11,6 +11,7 @@ export default defineConfig({
         globalSetup: ["test/global-setup.ts"],
         fileParallelism: false,
         maxWorkers: 1,
+        isolate: false,
         testTimeout: 60_000,
         hookTimeout: 120_000,
     },

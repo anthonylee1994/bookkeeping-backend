@@ -46,12 +46,12 @@ RECURRING_BACKFILL_MAX_DAYS=90
 
 ```json
 {
-  "error": {
-    "code": "validation_error",
-    "message": "Amount can't be blank",
-    "details": { "amount_cents": ["can't be blank"] },
-    "request_id": "abc-123"
-  }
+    "error": {
+        "code": "validation_error",
+        "message": "Amount can't be blank",
+        "details": {"amount_cents": ["can't be blank"]},
+        "request_id": "abc-123"
+    }
 }
 ```
 
@@ -127,15 +127,17 @@ RECURRING_BACKFILL_MAX_DAYS=90
 ```jsonc
 // POST {DEEPSEEK_BASE_URL}/chat/completions
 {
-  "model": "deepseek-flash",
-  "messages": [{
-    "role": "user",
-    "content": [
-      { "type": "text", "text": "<prompt + user categories>" },
-      { "type": "image_url", "image_url": { "url": "data:image/jpeg;base64,..." } }
-    ]
-  }],
-  "response_format": { "type": "json_object" }
+    "model": "deepseek-flash",
+    "messages": [
+        {
+            "role": "user",
+            "content": [
+                {"type": "text", "text": "<prompt + user categories>"},
+                {"type": "image_url", "image_url": {"url": "data:image/jpeg;base64,..."}},
+            ],
+        },
+    ],
+    "response_format": {"type": "json_object"},
 }
 ```
 

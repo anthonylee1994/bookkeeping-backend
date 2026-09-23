@@ -4,7 +4,7 @@ import {TypeOrmModule} from "@nestjs/typeorm";
 import {buildDataSourceOptions} from "./data-source-options";
 import {ENTITIES} from "./entities";
 
-const rootModule = TypeOrmModule.forRoot(buildDataSourceOptions());
+const rootModule = TypeOrmModule.forRootAsync({useFactory: () => buildDataSourceOptions()});
 const featureModule = TypeOrmModule.forFeature(ENTITIES);
 
 /**

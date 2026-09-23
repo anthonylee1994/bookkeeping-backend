@@ -1,7 +1,11 @@
-import {describe, expect, it} from "vitest";
+import {beforeEach, describe, expect, it, vi} from "vitest";
 import jwt from "jsonwebtoken";
 
+import {AuthController} from "../src/auth/auth.controller";
+import {MeController} from "../src/auth/me.controller";
 import {AuthService} from "../src/auth/auth.service";
+import {UsersService} from "../src/users/users.service";
+import {userFixture} from "./helpers/unit";
 
 describe("AuthService (JWT)", () => {
     const auth = new AuthService();
@@ -66,5 +70,108 @@ describe("AuthService (JWT)", () => {
         expect(auth.bearerToken("Basic abc")).toBeNull();
         expect(auth.bearerToken("Bearer   ")).toBeNull();
         expect(auth.bearerToken(undefined)).toBeNull();
+    });
+});
+
+describe("AuthController (unit)", () => {
+    let users: {findByUsername: ReturnType<typeof vi.fn>; verifyPassword: ReturnType<typeof vi.fn>; createUser: ReturnType<typeof vi.fn>};
+    let auth: {encodeToken: ReturnType<typeof vi.fn>};
+    let controller: AuthController;
+
+    beforeEach(() => {
+        users = {findByUsername: vi.fn().mockResolvedValue(null), verifyPassword: vi.fn(), createUser: vi.fn()};
+        auth = {encodeToken: vi.fn().mockReturnValue("signed-token")};
+        controller = new AuthController(users as unknown as UsersService, auth as unknown as AuthService);
+    });
+
+    it("register rejects a blank username and a short password", async () => {
+        await expect(controller.register({username: "  ", password: "short"})).rejects.toMatchObject({details: {username: ["不可為空白"], password: ["至少需要 8 個字元"]}});
+    });
+
+    it("register rejects an over-long username", async () => {
+        await expect(controller.register({username: "a".repeat(65), password: "secret123"})).rejects.toMatchObject({details: {username: ["最多可輸入 64 個字元"]}});
+    });
+
+    it("register lowercases the username and rejects duplicates", async () => {
+        users.findByUsername.mockResolvedValue(userFixture({username: "alice"}));
+        await expect(controller.register({username: "Alice", password: "secret123"})).rejects.toMatchObject({details: {username: ["已被使用"]}});
+        expect(users.findByUsername).toHaveBeenCalledWith("alice");
+    });
+
+    it("register maps a unique violation race to a duplicate error", async () => {
+        users.createUser.mockRejectedValue({driverError: {code: "SQLITE_CONSTRAINT_UNIQUE"}});
+        await expect(controller.register({username: "alice", password: "secret123"})).rejects.toMatchObject({details: {username: ["已被使用"]}});
+    });
+
+    it("register returns a token and the user payload", async () => {
+        users.createUser.mockResolvedValue(userFixture({id: "u1", username: "alice"}));
+
+        const result = (await controller.register({username: "Alice", password: "secret123"})) as {data: {token: string; user: Record<string, unknown>}};
+
+        expect(users.createUser).toHaveBeenCalledWith("alice", "secret123");
+        expect(result.data.token).toBe("signed-token");
+        expect(result.data.user).toMatchObject({id: "u1", username: "alice", currency: "HKD"});
+    });
+
+    it("login rejects unknown users and wrong passwords", async () => {
+        await expect(controller.login({username: "nobody", password: "secret123"})).rejects.toMatchObject({status: 401, code: "invalid_credentials"});
+
+        users.findByUsername.mockResolvedValue(userFixture());
+        users.verifyPassword.mockReturnValue(false);
+        await expect(controller.login({username: "alice", password: "wrong"})).rejects.toMatchObject({code: "invalid_credentials"});
+    });
+
+    it("login returns a token for correct credentials", async () => {
+        users.findByUsername.mockResolvedValue(userFixture({id: "u1", username: "alice"}));
+        users.verifyPassword.mockReturnValue(true);
+
+        const result = (await controller.login({username: "alice", password: "secret123"})) as {data: {token: string}};
+        expect(result.data.token).toBe("signed-token");
+    });
+});
+
+describe("MeController (unit)", () => {
+    let users: {verifyPassword: ReturnType<typeof vi.fn>; updatePassword: ReturnType<typeof vi.fn>};
+    let controller: MeController;
+
+    beforeEach(() => {
+        users = {verifyPassword: vi.fn(), updatePassword: vi.fn()};
+        controller = new MeController(users as unknown as UsersService);
+    });
+
+    it("show returns the current user", () => {
+        const result = controller.show(userFixture({id: "u1", username: "alice"})) as {data: Record<string, unknown>};
+        expect(result.data).toMatchObject({id: "u1", username: "alice"});
+    });
+
+    it("updatePassword rejects a bad current password", async () => {
+        users.verifyPassword.mockReturnValue(false);
+        await expect(controller.updatePassword(userFixture(), {password_challenge: "wrong", password: "newsecret123"})).rejects.toMatchObject({code: "invalid_current_password"});
+    });
+
+    it("updatePassword requires a new password and matching confirmation", async () => {
+        users.verifyPassword.mockReturnValue(true);
+
+        await expect(controller.updatePassword(userFixture(), {password_challenge: "secret123"})).rejects.toMatchObject({status: 422});
+
+        const mismatch = controller.updatePassword(userFixture(), {password_challenge: "secret123", password: "newsecret123", password_confirmation: "different123"});
+        await expect(mismatch).rejects.toMatchObject({details: {password_confirmation: ["與密碼不一致"]}});
+    });
+
+    it("updatePassword rejects a short password", async () => {
+        users.verifyPassword.mockReturnValue(true);
+        await expect(controller.updatePassword(userFixture(), {password_challenge: "secret123", password: "short"})).rejects.toMatchObject({details: {password: ["至少需要 8 個字元"]}});
+    });
+
+    it("updatePassword persists and returns the updated user", async () => {
+        users.verifyPassword.mockReturnValue(true);
+        users.updatePassword.mockResolvedValue(userFixture({id: "u1", username: "alice"}));
+
+        const result = (await controller.updatePassword(userFixture({id: "u1"}), {password_challenge: "secret123", password: "newsecret123", password_confirmation: "newsecret123"})) as {
+            data: Record<string, unknown>;
+        };
+
+        expect(users.updatePassword).toHaveBeenCalledWith(expect.objectContaining({id: "u1"}), "newsecret123");
+        expect(result.data.username).toBe("alice");
     });
 });

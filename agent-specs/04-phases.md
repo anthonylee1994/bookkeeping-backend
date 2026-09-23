@@ -13,17 +13,17 @@
 - [x] 加 gem：`bcrypt`, `jwt`, `rack-cors`, `rack-attack`, `pagy`, `rswag`, `dotenv-rails`(dev), `bullet`(dev/test), `rspec-rails`, `factory_bot_rails`, `webmock`, `vcr`, `faraday`, `faraday-retry`, `faraday-multipart`, `stoplight`, `json-schema`, `lograge`
 - [x] **唔裝**：`discard`、Solid Queue、Solid Cable
 - [x] `config/application.rb`：
-  - `config.time_zone = "Asia/Hong_Kong"`
-  - `config.active_record.default_timezone = :local`
-  - `config.middleware.insert_after ActionDispatch::RequestId, ActionDispatch::RequestId`
+    - `config.time_zone = "Asia/Hong_Kong"`
+    - `config.active_record.default_timezone = :local`
+    - `config.middleware.insert_after ActionDispatch::RequestId, ActionDispatch::RequestId`
 - [x] `config/initializers/cors.rb`：origin 由 `ENV["CORS_ORIGINS"].split(",")` 讀
 - [x] `config/initializers/rack_attack.rb`：login 5/min/IP、改密碼 5/min/user、AI 10/min/user、upload 20/min/user
 - [x] `config/initializers/pagy.rb`：`Pagy::DEFAULT[:max_per_page] = 100`
 - [x] `config/initializers/sqlite_uuid.rb`：將 `:uuid` map 做 `varchar(36)`（SQLite 冇 native UUID）
 - [x] `config.generators`：`g.orm :active_record, primary_key_type: :uuid`
 - [x] `ApplicationRecord`：
-  - `before_create`：`self.id ||= SecureRandom.uuid`
-  - `self.implicit_order_column = "created_at"`
+    - `before_create`：`self.id ||= SecureRandom.uuid`
+    - `self.implicit_order_column = "created_at"`
 - [x] `config/database.yml`：2 個 DB（primary / cache）全部指向 `storage/`
 - [x] SQLite WAL：`config/initializers/sqlite_pragma.rb`
 
@@ -105,13 +105,13 @@ dokku ps:scale bookkeeping-backend web=1
 - [x] Migration：User（2.1），`create_table :users, id: :uuid`
 - [x] `User` model：`has_secure_password`、username 轉 lowercase、password 最少 8 字、**冇 email**
 - [x] `JsonWebToken` service：
-  - `encode(user_id)`：用 `JWT_SECRET`；payload 含 `user_id`（UUID string）/ `iat`，**唔寫** `exp`**、唔寫** `jti`
-  - `decode(token)`：`JWT.decode(token, secret, true, { verify_expiration: false, algorithm: "HS256" })`
+    - `encode(user_id)`：用 `JWT_SECRET`；payload 含 `user_id`（UUID string）/ `iat`，**唔寫** `exp`**、唔寫** `jti`
+    - `decode(token)`：`JWT.decode(token, secret, true, { verify_expiration: false, algorithm: "HS256" })`
 - [x] `ApplicationController`：
-  - `authenticate_user!` before_action
-  - 解析 `Authorization: Bearer <token>`
-  - decode 後 `User.find(payload["user_id"])`；user 唔存在 → 401
-  - `catch_up_recurring` before_action 喺 Phase 4 先加
+    - `authenticate_user!` before_action
+    - 解析 `Authorization: Bearer <token>`
+    - decode 後 `User.find(payload["user_id"])`；user 唔存在 → 401
+    - `catch_up_recurring` before_action 喺 Phase 4 先加
 - [x] `AuthController`：register / login（**冇 logout**）
 - [x] login：簽發 JWT，**唔**寫任何 session row
 - [x] Rate limit login（Rack::Attack）
@@ -127,13 +127,13 @@ Content-Type: application/json
 
 ```json
 {
-  "data": {
-    "token": "eyJ...",
-    "user": {
-      "id": "7c9e6679-7425-40de-944b-e07fc1f90ae7",
-      "username": "alice"
+    "data": {
+        "token": "eyJ...",
+        "user": {
+            "id": "7c9e6679-7425-40de-944b-e07fc1f90ae7",
+            "username": "alice"
+        }
     }
-  }
 }
 ```
 
@@ -156,13 +156,13 @@ Content-Type: application/json
 
 - [x] Migrations（2.2 / 2.3 / 2.4）：全部 `id: :uuid`；FK 一律 `type: :uuid`
 - [x] User 註冊後 `after_create` callback 建立：
-  - 「現金」Account（kind=cash，color `#ecf0f1`，icon `mdi:cash`）
-  - 預設分類（每個都有 color `#ecf0f1` 同對應 `mdi:*` icon）：
-    - Expense：飲食、交通、娛樂、購物、醫療、住屋、水電、其他支出
-    - Income：薪水、獎金、投資、兼職、其他收入
+    - 「現金」Account（kind=cash，color `#ecf0f1`，icon `mdi:cash`）
+    - 預設分類（每個都有 color `#ecf0f1` 同對應 `mdi:*` icon）：
+        - Expense：飲食、交通、娛樂、購物、醫療、住屋、水電、其他支出
+        - Income：薪水、獎金、投資、兼職、其他收入
 - [x] Account / Category / Merchant controller CRUD + hard delete
-  - Category / Merchant：delete 時 FK nullify
-  - Account：有交易（含 transfer 目標）或 RecurringRule → 422 `account_in_use`
+    - Category / Merchant：delete 時 FK nullify
+    - Account：有交易（含 transfer 目標）或 RecurringRule → 422 `account_in_use`
 - [x] Merchant autocomplete：`GET /merchants?q=`，回 top 10（`usage_count` 降序、`name` 升序），SQLite `LIKE`；無 `q` 時回傳全部（商戶管理頁用）
 - [x] Merchant update：可改 `name` / `default_category_id`（default category 必須屬同一 user）
 - [x] 所有 query scope 到 `current_user`
@@ -185,11 +185,11 @@ Content-Type: application/json
 - [x] `Transaction` model：enum kind / source、validation（ownership）、scope、`by_user`
 - [x] `TransactionsController`：index（filter + sort + offset/limit）、create、show、update、destroy（hard delete）
 - [x] Idempotency（controller concern，`POST /transactions` 同 `/ai/confirm`）：
-  - 讀 `Idempotency-Key` header
-  - 查 IdempotencyKey table
-  - 若存在且 `created_at > 24.hours.ago`：`request_hash` 相同 → replay response；唔同 → 422 `idempotency_conflict`
-  - 否則執行 request，寫入 IdempotencyKey
-  - 過期 key 由 host cron `rails maintenance:cleanup` 每日清 > 24 小時
+    - 讀 `Idempotency-Key` header
+    - 查 IdempotencyKey table
+    - 若存在且 `created_at > 24.hours.ago`：`request_hash` 相同 → replay response；唔同 → 422 `idempotency_conflict`
+    - 否則執行 request，寫入 IdempotencyKey
+    - 過期 key 由 host cron `rails maintenance:cleanup` 每日清 > 24 小時
 - [x] 建立時：`increment!(:usage_count)` 對應 merchant
 - [x] `POST /transactions/:id/duplicate`：複製欄位，`occurred_at = now`
 - ~~`POST /transactions/:id/refund`~~：**2026-09-15 移除**（`refund_of_id` migration 已 drop）
@@ -227,23 +227,23 @@ Content-Type: application/json
 - [x] Migration（2.6 / 2.7）：全部 `id: :uuid`；FK 一律 `type: :uuid`
 - [x] `RecurringRule` model：validation、`next_run_at` 計算、hard delete
 - [x] `RecurringRuleCalculator` service：
-  - `next_occurrence(from:, rule:)` 支援 daily/weekly/monthly/yearly + interval
-  - 月末邊界處理（31 號 → 當月最後一日）
+    - `next_occurrence(from:, rule:)` 支援 daily/weekly/monthly/yearly + interval
+    - 月末邊界處理（31 號 → 當月最後一日）
 - [x] `RecurringCatchUp` service（**唔用 job**）：
-  - `call(user:)` 掃該 user `status = active` 且 `next_run_at <= now`
-  - 靠全 app `config.time_zone = "Asia/Hong_Kong"`，唔再包 `Time.use_zone`
-  - 用 `RecurringOccurrence` unique index 保證 idempotent；撞 unique → rescue 當已處理
-  - 建立 Transaction，`source = recurring`
-  - 更新 `last_run_at` / `next_run_at`
-  - 若 `end_on` 過 → `status = ended`
-  - **Backfill 邏輯**：
-    - `RECURRING_BACKFILL_ENABLED=false`：只產生今日一筆，中間 occurrence 寫 RecurringOccurrence 但 `transaction_id = nil`
-    - `RECURRING_BACKFILL_ENABLED=true`：補最多 `RECURRING_BACKFILL_MAX_DAYS` 日，超過 skip 並 log warning
+    - `call(user:)` 掃該 user `status = active` 且 `next_run_at <= now`
+    - 靠全 app `config.time_zone = "Asia/Hong_Kong"`，唔再包 `Time.use_zone`
+    - 用 `RecurringOccurrence` unique index 保證 idempotent；撞 unique → rescue 當已處理
+    - 建立 Transaction，`source = recurring`
+    - 更新 `last_run_at` / `next_run_at`
+    - 若 `end_on` 過 → `status = ended`
+    - **Backfill 邏輯**：
+        - `RECURRING_BACKFILL_ENABLED=false`：只產生今日一筆，中間 occurrence 寫 RecurringOccurrence 但 `transaction_id = nil`
+        - `RECURRING_BACKFILL_ENABLED=true`：補最多 `RECURRING_BACKFILL_MAX_DAYS` 日，超過 skip 並 log warning
 - [x] `ApplicationController`（已 authenticate）`before_action :catch_up_recurring`
-  - 跳過：AuthController、HealthController
+    - 跳過：AuthController、HealthController
 - [x] Controller：CRUD + pause / resume / run_now / skip_next
-  - `run_now`：該 `occurred_on` 未有 transaction 就補建；已有 → 409 `already_materialized`
-  - `skip_next`：寫 RecurringOccurrence（`transaction_id = nil`）並推進 `next_run_at`
+    - `run_now`：該 `occurred_on` 未有 transaction 就補建；已有 → 409 `already_materialized`
+    - `skip_next`：寫 RecurringOccurrence（`transaction_id = nil`）並推進 `next_run_at`
 
 **驗收**
 
@@ -264,53 +264,53 @@ Content-Type: application/json
 
 - [x] Migration：AiImportLog（2.8）：`id: :uuid`；FK 一律 `type: :uuid`
 - [x] `LihkgUploadService`：
-  - endpoint 由 `ENV["LIHKG_UPLOAD_URL"]` 讀
-  - multipart form，field name `file`
-  - 出站 header **必須** `Origin: https://lihkg.com`（硬編碼；圖床會 check，唔係呢個 Origin 會拒。**唔好**用我哋自己 API 嘅 CORS origin）
-  - 驗證 magic number（`marcel` gem）
-  - 大小上限 `MAX_UPLOAD_BYTES`（預設 10MB）
-  - timeout 10s
-  - **Stoplight circuit breaker**：連續失敗 5 次開路 60 秒
-  - 失敗回 502 + structured log
+    - endpoint 由 `ENV["LIHKG_UPLOAD_URL"]` 讀
+    - multipart form，field name `file`
+    - 出站 header **必須** `Origin: https://lihkg.com`（硬編碼；圖床會 check，唔係呢個 Origin 會拒。**唔好**用我哋自己 API 嘅 CORS origin）
+    - 驗證 magic number（`marcel` gem）
+    - 大小上限 `MAX_UPLOAD_BYTES`（預設 10MB）
+    - timeout 10s
+    - **Stoplight circuit breaker**：連續失敗 5 次開路 60 秒
+    - 失敗回 502 + structured log
 - [x] `ReceiptsController#upload`：收圖 → sha256 → 呼叫 LIHKG → 回 `{ url, sha256 }`（**唔落 DB**）
 - [x] `DeepSeekService`：
-  - `call(image_base64:, content_type:, categories:)` → 用 `deepseek-flash` vision
-  - `PROMPT_VERSION`（現為 `v2`）：改 prompt／解析邏輯要 bump，令舊 cache 失效
-  - Prompt 會帶入當前 user 分類（分 income／expense 列出），要求逐字 copy、唔准翻譯或自創
-  - Request body：
-    ```json
-    {
-      "model": "deepseek-flash",
-      "messages": [
+    - `call(image_base64:, content_type:, categories:)` → 用 `deepseek-flash` vision
+    - `PROMPT_VERSION`（現為 `v2`）：改 prompt／解析邏輯要 bump，令舊 cache 失效
+    - Prompt 會帶入當前 user 分類（分 income／expense 列出），要求逐字 copy、唔准翻譯或自創
+    - Request body：
+        ```json
         {
-          "role": "user",
-          "content": [
-            { "type": "text", "text": "Extract transaction data as JSON..." },
-            {
-              "type": "image_url",
-              "image_url": { "url": "data:image/jpeg;base64,..." }
-            }
-          ]
+            "model": "deepseek-flash",
+            "messages": [
+                {
+                    "role": "user",
+                    "content": [
+                        {"type": "text", "text": "Extract transaction data as JSON..."},
+                        {
+                            "type": "image_url",
+                            "image_url": {"url": "data:image/jpeg;base64,..."}
+                        }
+                    ]
+                }
+            ]
         }
-      ]
-    }
-    ```
-  - 用 JSON Schema 驗證回傳
-  - Log tokens / latency / raw_response 到 AiImportLog（連 `image_urls`）
+        ```
+    - 用 JSON Schema 驗證回傳
+    - Log tokens / latency / raw_response 到 AiImportLog（連 `image_urls`）
 - [x] `AiController#parse`：
-  - 接受 `{ "image_url": "https://..." }`
-  - Host 必須喺 `LIHKG_ALLOWED_HOSTS`（預設 `img.eservice-hk.net`），否則 400
-  - 先 fetch 圖計 sha256，再用 `image_sha256` + `parse_signature` 查 24 小時 cache
-  - 否則：base64 → DeepSeek `deepseek-flash`
-  - 回 preview JSON（唔入帳）：`parsed`、`suggested_category_id`、`status`、`raw_response`、`error`、tokens、latency
-  - HTTP status：
-    - `success` → 200
-    - `partial` → 200
-    - `failed` → 502
+    - 接受 `{ "image_url": "https://..." }`
+    - Host 必須喺 `LIHKG_ALLOWED_HOSTS`（預設 `img.eservice-hk.net`），否則 400
+    - 先 fetch 圖計 sha256，再用 `image_sha256` + `parse_signature` 查 24 小時 cache
+    - 否則：base64 → DeepSeek `deepseek-flash`
+    - 回 preview JSON（唔入帳）：`parsed`、`suggested_category_id`、`status`、`raw_response`、`error`、tokens、latency
+    - HTTP status：
+        - `success` → 200
+        - `partial` → 200
+        - `failed` → 502
 - [x] `AiController#confirm`：
-  - 接受 `ai_import_log_id`（或 `import_log_id`）＋ transaction 欄位
-  - 用戶確認 → 建 Transaction（`image_urls` = 提供嘅 URL array，冇提供就用 log 嘅，`source = ai`）→ 回填 AiImportLog
-  - 支援 `Idempotency-Key`
+    - 接受 `ai_import_log_id`（或 `import_log_id`）＋ transaction 欄位
+    - 用戶確認 → 建 Transaction（`image_urls` = 提供嘅 URL array，冇提供就用 log 嘅，`source = ai`）→ 回填 AiImportLog
+    - 支援 `Idempotency-Key`
 
 **Pipeline**
 
@@ -344,18 +344,18 @@ upload → LIHKG URL（只回 client，唔寫 Attachment）
 **任務**
 
 - [x] `DashboardController#show`：
-  - 總收入 / 總支出 / 淨額（預設當月）
-  - 最近 10 筆交易
-  - 分類佔比（每行 income_cents + expense_cents，按 expense 再 income 降序）
-  - 帳戶餘額（initial + sum(income) - sum(expense)，transfer 不計）
-  - 週期交易提醒（7 日內 next_run_at）
+    - 總收入 / 總支出 / 淨額（預設當月）
+    - 最近 10 筆交易
+    - 分類佔比（每行 income_cents + expense_cents，按 expense 再 income 降序）
+    - 帳戶餘額（initial + sum(income) - sum(expense)，transfer 不計）
+    - 週期交易提醒（7 日內 next_run_at）
 - [x] `SummariesController`：
-  - `daily`：Asia/Hong_Kong 當日 00:00:00 - 23:59:59
-  - `weekly`：Mon 00:00:00 - Sun 23:59:59
-  - `monthly`：1 號 00:00:00 - 月末 23:59:59
-  - 排除 transfer（獨立 `transfers` key）
-  - 回 `daily`（逐日 net_cents）、`by_category`（income_cents + expense_cents）、`by_account`、`transfers`、`transactions` 分頁
-  - catch-up 已喺 before_action 跑完，summary 只計真實 Transaction
+    - `daily`：Asia/Hong_Kong 當日 00:00:00 - 23:59:59
+    - `weekly`：Mon 00:00:00 - Sun 23:59:59
+    - `monthly`：1 號 00:00:00 - 月末 23:59:59
+    - 排除 transfer（獨立 `transfers` key）
+    - 回 `daily`（逐日 net_cents）、`by_category`（income_cents + expense_cents）、`by_account`、`transfers`、`transactions` 分頁
+    - catch-up 已喺 before_action 跑完，summary 只計真實 Transaction
 - [x] 靠全 app `config.time_zone = "Asia/Hong_Kong"`，唔再包 `Time.use_zone`
 - [x] 加 index 支援 range query（`(user_id, occurred_at, kind)`）
 
@@ -408,7 +408,7 @@ dokku run bookkeeping-backend sh -c '
 ```
 
 - [x] `lib/tasks/maintenance.rake`：`rails maintenance:cleanup`
-  - IdempotencyKey `created_at < 24.hours.ago`
+    - IdempotencyKey `created_at < 24.hours.ago`
 - [x] Host cron 每日跑 backup + maintenance（**唔使 worker**）：
 
 ```
@@ -500,31 +500,31 @@ dokku run bookkeeping-backend sh -c '
 
 **對照表**
 
-| 原 loco.rs 元件                                   | NestJS 對應                                                                  |
-| ------------------------------------------------- | ---------------------------------------------------------------------------- |
-| `src/models/_entities/*.rs`（SeaORM entity）      | TypeORM entities（`src/database/entities/*.entity.ts`，snake_case 欄位 1:1）+ `src/database/migrations/20260921000000-init.ts` |
-| `util::new_id()`                                  | `src/common/util.ts` `newId()`（`crypto.randomUUID()`）                       |
-| `src/controllers/*.rs`（axum handlers）           | `src/<module>/*.controller.ts`（NestJS controllers）                          |
-| `src/api/extract.rs` `AuthUser` extractor        | `src/auth/auth.guard.ts`（global `APP_GUARD`）+ `@Public()` / `@CurrentUser()` |
-| `AuthUser` extractor 內 catch-up                  | `AuthGuard` 呼叫 `RecurringService.catchUp()`                                 |
-| `src/api/error.rs` `ApiError`                     | `src/common/errors.ts` + `src/common/error.filter.ts`                         |
-| `src/api/params.rs` / `validation.rs`             | `src/common/params.ts` / `src/common/validation.ts`                           |
-| `src/api/time.rs`                                 | `src/common/time.ts`（naive `Date`：UTC 欄位 = HK wall clock）                |
-| `src/views/mod.rs`                                | `src/views/enums.ts` + `src/views/serializers.ts`                             |
-| `src/api/idempotency.rs`                          | `src/idempotency/idempotency.service.ts`                                      |
-| `src/middleware/rate_limit.rs`                    | `src/rate-limit/rate-limit.middleware.ts`                                     |
-| `src/middleware/cors.rs`                          | `src/app.setup.ts` `enableCors`                                               |
-| `src/api/request_id.rs`（tokio task-local）       | `src/common/request-id.ts`（`AsyncLocalStorage`）                             |
-| `src/services/recurring.rs`                       | `src/recurring/recurring.service.ts`                                          |
-| `src/controllers/dashboard.rs` / `summaries.rs`   | `src/dashboard/`、`src/summaries/` + `src/reports/`（共用聚合 helper）        |
-| `src/services/deepseek.rs`                        | `src/ai/deepseek.service.ts`（原生 `fetch`）                                  |
-| `src/services/lihkg.rs`                           | `src/receipts/lihkg.service.ts`（原生 `fetch` + FormData/Blob）               |
-| `src/tasks/maintenance.rs`                        | `src/tasks/maintenance.ts`（`pnpm maintenance:cleanup` / prod `node dist/tasks/maintenance.js`） |
-| `src/controllers/docs.rs`                         | `src/docs/docs.controller.ts`（回 `swagger/v1/swagger.yaml`）                 |
-| `src/controllers/health.rs`                       | `src/health/health.controller.ts`                                             |
-| `cargo loco start`                                | `pnpm start:dev`                                                              |
-| `cargo test`（loco testing + serial_test）        | Vitest + supertest（單 fork 序列，`test/*.spec.ts`）                           |
-| Dokku Dockerfile（Rust multi-stage）              | Dokku Dockerfile（Node multi-stage + TypeORM）                                  |
+| 原 loco.rs 元件                                 | NestJS 對應                                                                                                                    |
+| ----------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------ |
+| `src/models/_entities/*.rs`（SeaORM entity）    | TypeORM entities（`src/database/entities/*.entity.ts`，snake_case 欄位 1:1）+ `src/database/migrations/20260921000000-init.ts` |
+| `util::new_id()`                                | `src/common/util.ts` `newId()`（`crypto.randomUUID()`）                                                                        |
+| `src/controllers/*.rs`（axum handlers）         | `src/<module>/*.controller.ts`（NestJS controllers）                                                                           |
+| `src/api/extract.rs` `AuthUser` extractor       | `src/auth/auth.guard.ts`（global `APP_GUARD`）+ `@Public()` / `@CurrentUser()`                                                 |
+| `AuthUser` extractor 內 catch-up                | `AuthGuard` 呼叫 `RecurringService.catchUp()`                                                                                  |
+| `src/api/error.rs` `ApiError`                   | `src/common/errors.ts` + `src/common/error.filter.ts`                                                                          |
+| `src/api/params.rs` / `validation.rs`           | `src/common/params.ts` / `src/common/validation.ts`                                                                            |
+| `src/api/time.rs`                               | `src/common/time.ts`（naive `Date`：UTC 欄位 = HK wall clock）                                                                 |
+| `src/views/mod.rs`                              | `src/views/enums.ts` + `src/views/serializers.ts`                                                                              |
+| `src/api/idempotency.rs`                        | `src/idempotency/idempotency.service.ts`                                                                                       |
+| `src/middleware/rate_limit.rs`                  | `src/rate-limit/rate-limit.middleware.ts`                                                                                      |
+| `src/middleware/cors.rs`                        | `src/app.setup.ts` `enableCors`                                                                                                |
+| `src/api/request_id.rs`（tokio task-local）     | `src/common/request-id.ts`（`AsyncLocalStorage`）                                                                              |
+| `src/services/recurring.rs`                     | `src/recurring/recurring.service.ts`                                                                                           |
+| `src/controllers/dashboard.rs` / `summaries.rs` | `src/dashboard/`、`src/summaries/` + `src/reports/`（共用聚合 helper）                                                         |
+| `src/services/deepseek.rs`                      | `src/ai/deepseek.service.ts`（原生 `fetch`）                                                                                   |
+| `src/services/lihkg.rs`                         | `src/receipts/lihkg.service.ts`（原生 `fetch` + FormData/Blob）                                                                |
+| `src/tasks/maintenance.rs`                      | `src/tasks/maintenance.ts`（`pnpm maintenance:cleanup` / prod `node dist/tasks/maintenance.js`）                               |
+| `src/controllers/docs.rs`                       | `src/docs/docs.controller.ts`（回 `swagger/v1/swagger.yaml`）                                                                  |
+| `src/controllers/health.rs`                     | `src/health/health.controller.ts`                                                                                              |
+| `cargo loco start`                              | `pnpm start:dev`                                                                                                               |
+| `cargo test`（loco testing + serial_test）      | Vitest + supertest（單 fork 序列，`test/*.spec.ts`）                                                                           |
+| Dokku Dockerfile（Rust multi-stage）            | Dokku Dockerfile（Node multi-stage + TypeORM）                                                                                 |
 
 **驗收**
 
@@ -538,19 +538,19 @@ dokku run bookkeeping-backend sh -c '
 
 **測試遷移（`tests/requests/*.rs` → `test/*.spec.ts`）**
 
-| Rust test                          | NestJS test                        |
-| ---------------------------------- | ---------------------------------- |
-| `tests/requests/auth_spec.rs`      | `test/auth.spec.ts`                |
-| `tests/requests/accounts_spec.rs`  | `test/accounts.spec.ts`            |
-| `tests/requests/categories_spec.rs`| `test/categories.spec.ts`          |
-| `tests/requests/merchants_spec.rs` | `test/merchants.spec.ts`           |
-| `tests/requests/transactions_spec.rs` | `test/transactions.spec.ts`     |
-| `tests/requests/recurring_spec.rs` | `test/recurring.spec.ts`           |
+| Rust test                               | NestJS test                                       |
+| --------------------------------------- | ------------------------------------------------- |
+| `tests/requests/auth_spec.rs`           | `test/auth.spec.ts`                               |
+| `tests/requests/accounts_spec.rs`       | `test/accounts.spec.ts`                           |
+| `tests/requests/categories_spec.rs`     | `test/categories.spec.ts`                         |
+| `tests/requests/merchants_spec.rs`      | `test/merchants.spec.ts`                          |
+| `tests/requests/transactions_spec.rs`   | `test/transactions.spec.ts`                       |
+| `tests/requests/recurring_spec.rs`      | `test/recurring.spec.ts`                          |
 | `tests/requests/ai_spec.rs`（wiremock） | `test/ai.spec.ts`（自建 `node:http` mock server） |
-| `tests/requests/summaries_spec.rs` | `test/summaries.spec.ts`           |
-| `tests/requests/health_spec.rs`    | `test/health.spec.ts`              |
+| `tests/requests/summaries_spec.rs`      | `test/summaries.spec.ts`                          |
+| `tests/requests/health_spec.rs`         | `test/health.spec.ts`                             |
 
-> `src/api/auth.rs` 嘅 JWT unit test 同 `src/services/recurring.rs` 嘅 `next_occurrence` unit test，行為由 request specs（recurring backfill / catch-up）覆蓋；`next_occurrence` 嘅日期 clamp 邏輯內含喺 `src/recurring/recurring.service.ts`。未另設純 unit test。
+> 每個 controller / service 另有隔離式 unit spec（`test/*-unit.spec.ts`，以 mock repository / `DataSource` / `fetch` 直接驅動 class）：`auth`（含 `AuthService` JWT 同 `MeController`）、`accounts`、`categories`、`merchants`、`transactions`、`recurring`（含 `nextOccurrence` clamp）、`ai`、`deepseek`、`lihkg`、`receipts`、`dashboard`、`summaries`、`health`、`docs`、`users`、`idempotency`、`reporting`。request spec（`*.spec.ts`）負責端到端 contract，unit spec 負責分支同錯誤路徑。
 
 ---
 
@@ -560,15 +560,15 @@ dokku run bookkeeping-backend sh -c '
 
 **對照表**
 
-| Prisma 元件                                          | TypeORM 對應                                                          |
-| ---------------------------------------------------- | --------------------------------------------------------------------- |
-| `prisma/schema.prisma` models                        | `src/database/entities/*.entity.ts`（`@Entity` / `@PrimaryColumn` / `@Column` / `@Index`） |
-| `PrismaService`（`src/prisma/prisma.module.ts`）     | `src/database/database.module.ts`（global `TypeOrmModule`，exports `DataSource` + repositories） |
-| `prisma migrate deploy`                              | `src/tasks/migrate.ts` + `src/database/migrations/*.ts`（`migrationsRun: true` 開機自動跑） |
-| `$queryRawUnsafe` / `$executeRawUnsafe`              | `DataSource.query()` / `better-sqlite3` raw connection                |
-| `$transaction([...])` / `$transaction(fn)`           | `DataSource.transaction(async (manager) => …)`                        |
-| Prisma unique code `P2002`                           | `isUniqueViolation()`（`src/database/db-errors.ts`，睇 SQLite `SQLITE_CONSTRAINT_UNIQUE`） |
-| PrismaClient in tests                                | `app.get(DataSource)` + `src/database/entities/*`（`test/helpers/*`）  |
+| Prisma 元件                                      | TypeORM 對應                                                                                     |
+| ------------------------------------------------ | ------------------------------------------------------------------------------------------------ |
+| `prisma/schema.prisma` models                    | `src/database/entities/*.entity.ts`（`@Entity` / `@PrimaryColumn` / `@Column` / `@Index`）       |
+| `PrismaService`（`src/prisma/prisma.module.ts`） | `src/database/database.module.ts`（global `TypeOrmModule`，exports `DataSource` + repositories） |
+| `prisma migrate deploy`                          | `src/tasks/migrate.ts` + `src/database/migrations/*.ts`（`migrationsRun: true` 開機自動跑）      |
+| `$queryRawUnsafe` / `$executeRawUnsafe`          | `DataSource.query()` / `better-sqlite3` raw connection                                           |
+| `$transaction([...])` / `$transaction(fn)`       | `DataSource.transaction(async (manager) => …)`                                                   |
+| Prisma unique code `P2002`                       | `isUniqueViolation()`（`src/database/db-errors.ts`，睇 SQLite `SQLITE_CONSTRAINT_UNIQUE`）       |
+| PrismaClient in tests                            | `app.get(DataSource)` + `src/database/entities/*`（`test/helpers/*`）                            |
 
 **驗收**
 

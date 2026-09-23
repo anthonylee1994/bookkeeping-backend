@@ -10,6 +10,7 @@ import {jsonParseArray, newId} from "../common/util";
 import {envOr} from "../config/env";
 import {SummaryInsight} from "../database/entities/summary-insight.entity";
 import type {User} from "../database/entities/user.entity";
+import {ReportingService} from "../reports/reporting.service";
 import {insightPayload} from "../views/serializers";
 import {buildInsightFacts, insightFactSheet, parseInsightPeriod, periodKey, previousPeriodDate, summaryFingerprint} from "./insight";
 import type {InsightPeriod, SummaryData} from "./insight";
@@ -28,6 +29,7 @@ export class SummariesInsightController {
     constructor(
         private readonly summaries: SummariesService,
         private readonly deepseek: DeepseekService,
+        private readonly reporting: ReportingService,
         @InjectRepository(SummaryInsight) private readonly insights: Repository<SummaryInsight>
     ) {}
 
@@ -46,7 +48,8 @@ export class SummariesInsightController {
 
         const {data, regular} = await this.summaries.build(user.id, period, dateParam, "1", "1");
         const key = periodKey(period, data.range);
-        const fingerprint = summaryFingerprint(data);
+        const merchantNames = await this.reporting.loadMerchantNames(user.id);
+        const fingerprint = summaryFingerprint(data, regular, merchantNames);
 
         if (data.transactions.meta.total === 0 && data.transfers.count === 0) {
             return {
@@ -73,7 +76,7 @@ export class SummariesInsightController {
             }
         }
 
-        const facts = buildInsightFacts(period, data, await this.previousData(user.id, period, data.range), regular);
+        const facts = buildInsightFacts(period, data, await this.previousData(user.id, period, data.range), regular, merchantNames);
 
         let outcome;
         try {

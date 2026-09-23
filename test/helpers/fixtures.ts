@@ -127,7 +127,8 @@ export async function createTransaction(
     categoryId: string | null,
     merchantId: string | null,
     transferAccountId: string | null,
-    source: number
+    source: number,
+    note: string | null = null
 ): Promise<Transaction> {
     const now = time.toDbDatetime(time.nowLocal());
     return dataSource.getRepository(Transaction).save({
@@ -140,7 +141,7 @@ export async function createTransaction(
         amount_cents: amountCents,
         currency: "HKD",
         occurred_at: time.toDbDatetime(occurredAt),
-        note: null,
+        note,
         payment_method: null,
         image_urls: "[]",
         source,

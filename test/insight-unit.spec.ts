@@ -1,7 +1,7 @@
 import {describe, expect, it} from "vitest";
 
 import {allowedNumericTokens, firstDisallowedNumber, insightPrompt, normalizeNumericToken, validateInsight} from "../src/ai/insight";
-import {buildInsightFacts, formatDollars, insightFactSheet, parseInsightPeriod, periodKey, periodLabel, previousPeriodDate, summaryFingerprint} from "../src/summaries/insight";
+import {buildInsightFacts, cleanNote, formatDollars, insightFactSheet, parseInsightPeriod, periodKey, periodLabel, previousPeriodDate, summaryFingerprint} from "../src/summaries/insight";
 import type {SummaryData} from "../src/summaries/insight";
 
 function summary(overrides: Partial<SummaryData> = {}): SummaryData {
@@ -22,7 +22,7 @@ function summary(overrides: Partial<SummaryData> = {}): SummaryData {
     };
 }
 
-const ROWS = [{kind: 1, amount_cents: 40_000, category_id: "c1", occurred_at: "2026-09-16 10:00:00.000"}];
+const ROWS = [{kind: 1, amount_cents: 40_000, category_id: "c1", merchant_id: "m1", occurred_at: "2026-09-16 10:00:00.000", note: "同朋友食飯"}];
 
 describe("summaries/insight (unit)", () => {
     it("parses only supported periods", () => {
@@ -58,7 +58,7 @@ describe("summaries/insight (unit)", () => {
     });
 
     it("builds a fact sheet containing only precomputed numbers", () => {
-        const facts = buildInsightFacts("monthly", summary(), summary({income_cents: 80_000, expense_cents: 20_000, net_cents: 60_000}), ROWS);
+        const facts = buildInsightFacts("monthly", summary(), summary({income_cents: 80_000, expense_cents: 20_000, net_cents: 60_000}), ROWS, new Map([["m1", "大快活"]]));
         const sheet = insightFactSheet(facts);
 
         expect(sheet).toContain("收入：HK$1,000.00");
@@ -66,10 +66,42 @@ describe("summaries/insight (unit)", () => {
         expect(sheet).toContain("支出分類（由大至小）：飲食 HK$400.00（100%）");
         expect(sheet).toContain("最大單筆支出：HK$400.00（飲食，2026-09-16，佔總支出 100%）");
         expect(sheet).toContain("支出最多嘅一日：2026-09-16，HK$400.00");
+        expect(sheet).toContain("期內交易（按時間順序，共 1 筆）：");
+        expect(sheet).toContain("2026-09-16 支出 分類：飲食 商戶：大快活 HK$400.00 備註：同朋友食飯");
+        expect(facts.transactions).toEqual([{date: "2026-09-16", kind: "expense", name: "飲食", merchant: "大快活", dollars: "400.00", note: "同朋友食飯"}]);
         expect(sheet).toContain("上一期收入：HK$800.00");
         expect(facts.previous?.expenseChange).toBe(100);
         expect(facts.expenseConcentration).toBe(100);
         expect(facts.averageDailyExpenseDollars).toBe("13.33");
+    });
+
+    it("lists every transaction in date order and labels uncategorised rows", () => {
+        const facts = buildInsightFacts("monthly", summary(), null, [
+            {kind: 1, amount_cents: 5_000, category_id: "c1", occurred_at: "2026-09-18 13:00:00.000"},
+            {kind: 0, amount_cents: 100_000, category_id: null, occurred_at: "2026-09-16 09:00:00.000"},
+            {kind: 2, amount_cents: 200_000, category_id: null, occurred_at: "2026-09-17 10:00:00.000"},
+        ]);
+
+        expect(facts.transactions).toEqual([
+            {date: "2026-09-16", kind: "income", name: "未分類", merchant: null, dollars: "1,000.00", note: null},
+            {date: "2026-09-18", kind: "expense", name: "飲食", merchant: null, dollars: "50.00", note: null},
+        ]);
+        expect(insightFactSheet(facts)).toContain("期內交易（按時間順序，共 2 筆）：");
+    });
+
+    it("collapses whitespace in notes without truncating", () => {
+        expect(cleanNote(null)).toBeNull();
+        expect(cleanNote("   ")).toBeNull();
+        expect(cleanNote("  交租\n9 月  ")).toBe("交租 9 月");
+        expect(cleanNote("x".repeat(500))).toBe("x".repeat(500));
+    });
+
+    it("fingerprint changes when a note or merchant changes", () => {
+        const names = new Map([["m1", "大快活"]]);
+        const base = summaryFingerprint(summary(), ROWS, names);
+        expect(summaryFingerprint(summary(), ROWS, names)).toBe(base);
+        expect(summaryFingerprint(summary(), [{...ROWS[0], note: "第二餐"}], names)).not.toBe(base);
+        expect(summaryFingerprint(summary(), ROWS, new Map([["m1", "大家樂"]]))).not.toBe(base);
     });
 
     it("marks a largest expense as uncategorised when the row has no category", () => {
@@ -114,10 +146,20 @@ describe("ai/insight (unit)", () => {
         expect(validateInsight({highlights: []}, new Set())).toMatchObject({error: expect.stringContaining("summary")});
     });
 
-    it("caps highlights and lengths", () => {
+    it("caps the number of highlights", () => {
         const allowed = allowedNumericTokens(factSheet);
         const result = validateInsight({summary: "支出 HK$400.00。", highlights: ["a", "b", "c", "d", "e", "f"]}, allowed);
         expect("insight" in result && result.insight.highlights).toHaveLength(3);
+    });
+
+    it("keeps long summary and highlights in full without truncating", () => {
+        const allowed = allowedNumericTokens(factSheet);
+        const longHighlight = `支出 HK$400.00。${"額外觀察".repeat(60)}`;
+        const longSummary = `支出 HK$400.00。${"總結內容".repeat(80)}`;
+        const result = validateInsight({summary: longSummary, highlights: [longHighlight]}, allowed);
+
+        expect("insight" in result && result.insight.text).toBe(longSummary);
+        expect("insight" in result && result.insight.highlights[0]).toBe(longHighlight);
     });
 
     it("prompt asks for JSON with summary and highlights", () => {

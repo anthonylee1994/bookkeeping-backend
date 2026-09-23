@@ -138,7 +138,7 @@
 
 - 只支援 `weekly` / `monthly`；`daily`（以及其他期間）→ 422 `validation_error`（日報太短，冇洞察價值）。
 - 以 `(user, period, period_key, fingerprint)` cache；指紋 = 該期 deterministic summary 數字嘅 hash，交易一改就失效重算（**唔會**喺寫入交易時 eager 更新）。
-- 模型只可以重述後端預先算好嘅數字；輸出含「唔喺 fact sheet 出現過」嘅數字 → reject（`status = failed`）。
+- 模型只可以重述後端預先算好嘅數字同期內每筆交易（fact sheet 會列出日期、收支類型、分類名、商戶名、金額、備註；備註會壓平換行但唔截短）；輸出含「唔喺 fact sheet 出現過」嘅數字 → reject（`status = failed`）。
 - 冇任何收入／支出／轉帳 → `status = empty`，唔會 call DeepSeek。
 - `refresh=1` 強制重算（繞過 cache）。
 - DeepSeek upstream 失敗 → 502 `upstream_error`。

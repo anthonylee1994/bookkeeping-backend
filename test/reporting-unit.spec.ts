@@ -2,23 +2,26 @@ import {beforeEach, describe, expect, it} from "vitest";
 
 import {Account} from "../src/database/entities/account.entity";
 import {Category} from "../src/database/entities/category.entity";
+import {Merchant} from "../src/database/entities/merchant.entity";
 import {Transaction} from "../src/database/entities/transaction.entity";
 import {ReportingService} from "../src/reports/reporting.service";
-import {accountFixture, categoryFixture, MockRepo, mockRepo, repo, transactionFixture} from "./helpers/unit";
+import {accountFixture, categoryFixture, merchantFixture, MockRepo, mockRepo, repo, transactionFixture} from "./helpers/unit";
 
 const USER = "user-1";
 
 describe("ReportingService (unit)", () => {
     let categories: MockRepo;
     let accounts: MockRepo;
+    let merchants: MockRepo;
     let transactions: MockRepo;
     let service: ReportingService;
 
     beforeEach(() => {
         categories = mockRepo();
         accounts = mockRepo();
+        merchants = mockRepo();
         transactions = mockRepo();
-        service = new ReportingService(repo<Category>(categories), repo<Account>(accounts), repo<Transaction>(transactions));
+        service = new ReportingService(repo<Category>(categories), repo<Account>(accounts), repo<Merchant>(merchants), repo<Transaction>(transactions));
     });
 
     it("loads category names as a map", async () => {
@@ -29,6 +32,15 @@ describe("ReportingService (unit)", () => {
         expect(categories.find).toHaveBeenCalledWith({where: {user_id: USER}});
         expect(names.get("c1")).toBe("飲食");
         expect(names.get("c2")).toBe("交通");
+    });
+
+    it("loads merchant names as a map", async () => {
+        merchants.find.mockResolvedValue([merchantFixture({id: "m1", name: "大快活"})]);
+
+        const names = await service.loadMerchantNames(USER);
+
+        expect(merchants.find).toHaveBeenCalledWith({where: {user_id: USER}});
+        expect(names.get("m1")).toBe("大快活");
     });
 
     it("loads account names as a map", async () => {

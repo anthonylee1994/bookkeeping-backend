@@ -4,6 +4,7 @@ import {Repository} from "typeorm";
 
 import {Account} from "../database/entities/account.entity";
 import {Category} from "../database/entities/category.entity";
+import {Merchant} from "../database/entities/merchant.entity";
 import {Transaction} from "../database/entities/transaction.entity";
 import {accountTotals, Totals} from "./reporting";
 
@@ -12,11 +13,17 @@ export class ReportingService {
     constructor(
         @InjectRepository(Category) private readonly categories: Repository<Category>,
         @InjectRepository(Account) private readonly accounts: Repository<Account>,
+        @InjectRepository(Merchant) private readonly merchants: Repository<Merchant>,
         @InjectRepository(Transaction) private readonly transactions: Repository<Transaction>
     ) {}
 
     async loadCategoryNames(userId: string): Promise<Map<string, string>> {
         const rows = await this.categories.find({where: {user_id: userId}});
+        return new Map(rows.map(row => [row.id, row.name]));
+    }
+
+    async loadMerchantNames(userId: string): Promise<Map<string, string>> {
+        const rows = await this.merchants.find({where: {user_id: userId}});
         return new Map(rows.map(row => [row.id, row.name]));
     }
 

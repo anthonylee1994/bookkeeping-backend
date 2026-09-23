@@ -5,17 +5,22 @@ import {config} from "dotenv";
 
 import {resolveDatabasePath} from "../src/database/data-source-options";
 
-/** Runs once before any test file: build a migrated template database. */
-export default function globalSetup(): void {
-    config({path: ".env.test", override: true});
-    process.env.NODE_ENV = "test";
-    mkdirSync("storage", {recursive: true});
-
+/** Remove every per-worker test database plus its WAL/SHM sidecars. */
+function removeTestDatabases(): void {
     for (const entry of readdirSync("storage")) {
         if (/^test.*\.sqlite3(-wal|-shm)?$/.test(entry)) {
             rmSync(`storage/${entry}`, {force: true});
         }
     }
+}
+
+/** Runs once before any test file: build a migrated template database. */
+export default function globalSetup(): () => void {
+    config({path: ".env.test", override: true});
+    process.env.NODE_ENV = "test";
+    mkdirSync("storage", {recursive: true});
+
+    removeTestDatabases();
 
     const template = "test-template.sqlite3";
     process.env.DATABASE_URL = `file:../storage/${template}`;
@@ -32,4 +37,8 @@ export default function globalSetup(): void {
     for (const suffix of ["-wal", "-shm"]) {
         rmSync(`storage/${template}${suffix}`, {force: true});
     }
+
+    // Vitest runs the returned function once after the whole suite, so the
+    // per-worker databases (and the template) never linger in storage/.
+    return removeTestDatabases;
 }

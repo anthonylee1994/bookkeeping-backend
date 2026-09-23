@@ -40,7 +40,11 @@ dokku ps:scale bookkeeping-backend web=1
 git push dokku main
 ```
 
-`docker-entrypoint.sh` 會先 `node dist/tasks/migrate.js`（TypeORM migration）再 `node dist/main.js`，所以唔使另設 release process。
+`docker-entrypoint.sh` 會先 `node dist/tasks/normalize-sqlite-types.js`、`node dist/tasks/migrate.js`（TypeORM migration）再 `node dist/main.js`，所以唔使另設 release process。
+
+> Build stage 要裝 `python3 make g++`（runtime 要 `libstdc++6`）：`better-sqlite3` 冇保證有 prebuilt binary，攞唔到就會 fallback 去 `node-gyp rebuild`，冇 toolchain 就 build fail。
+>
+> 由舊 Rails / loco.rs DB 升級時，`normalize-sqlite-types.js` 會用 `PRAGMA writable_schema` 改 schema；deploy 前**必須先停舊 container**（`dokku ps:stop bookkeeping-backend`），否則舊 connection 會出 `SQLITE_CORRUPT`。Dokku 預設 zero-downtime 係新舊同時行，所以要手動停。
 
 ## 運維
 

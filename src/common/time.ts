@@ -45,6 +45,24 @@ export function toDbDatetime(date: Date): string {
     return `${toDbDate(date)} ${time}.${pad(date.getUTCMilliseconds(), 3)}`;
 }
 
+/**
+ * `2026-09-14 10:00:00` — second precision, no fractional part.
+ *
+ * Used for range bounds: legacy Rails/loco rows stored datetimes without a
+ * fractional part (or with microseconds) while this app always writes
+ * milliseconds, and TEXT columns compare lexicographically. A fraction-less
+ * value sorts before the same instant written as `...10:00:00.000`, so
+ * millisecond-precision bounds drop rows that sit exactly on a boundary.
+ */
+export function toDbDatetimeSeconds(date: Date): string {
+    return toDbDatetime(date).slice(0, 19);
+}
+
+/** Rounds `date` down to the whole second (see `toDbDatetimeSeconds`). */
+export function floorToSecond(date: Date): Date {
+    return new Date(Math.floor(date.getTime() / 1000) * 1000);
+}
+
 /** `2026-09-14T10:00:00.000+08:00` — matches the Rails/loco serializer. */
 export function formatDatetime(date: Date): string {
     const time = `${pad(date.getUTCHours())}:${pad(date.getUTCMinutes())}:${pad(date.getUTCSeconds())}`;

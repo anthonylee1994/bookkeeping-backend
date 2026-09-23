@@ -2,6 +2,7 @@ import {INestApplication} from "@nestjs/common";
 import {afterAll, beforeAll, beforeEach, describe, expect, it} from "vitest";
 
 import * as time from "../src/common/time";
+import {Transaction} from "../src/database/entities/transaction.entity";
 import {DataSource} from "typeorm";
 import {createApp, http, HttpClient, resetDatabase} from "./helpers/app";
 import {at, authHeader, createAccount, createRule, createTransaction, registerAndLogin} from "./helpers/fixtures";
@@ -109,6 +110,25 @@ describe("summaries & dashboard", () => {
         expect(daily[1].date).toBe("2026-09-03");
         expect(daily[1].net_cents).toBe(2_000);
         expect(Object.keys(daily[0])).toHaveLength(2);
+    });
+
+    it("includes boundary transactions stored without fractional seconds", async () => {
+        const fixture = await registerAndLogin(client);
+        const transaction = await createTransaction(dataSource, fixture.userId, fixture.accountId, 1, 1_000_000, at(2026, 9, 1, 0, 0), fixture.expenseCategoryId, null, null, 0);
+        // Legacy Rails / loco.rs rows stored datetimes without a fractional part;
+        // a fraction-less value sorts before the same instant written as "...00.000".
+        await dataSource.getRepository(Transaction).update({id: transaction.id}, {occurred_at: "2026-09-01 00:00:00"});
+
+        const headers = authHeader(fixture.token);
+        const monthly = await client.get("/api/v1/summaries/monthly?date=2026-09-14").set(headers);
+        expect(monthly.body.data.expense_cents).toBe(1_000_000);
+        expect((monthly.body.data.by_category as Array<Record<string, unknown>>)[0].category_id).toBe(fixture.expenseCategoryId);
+
+        const daily = await client.get("/api/v1/summaries/daily?date=2026-09-01").set(headers);
+        expect(daily.body.data.expense_cents).toBe(1_000_000);
+
+        const dashboard = await client.get("/api/v1/dashboard?date=2026-09-14").set(headers);
+        expect(dashboard.body.data.expense_cents).toBe(1_000_000);
     });
 
     it("dashboard returns monthly metrics and reminders", async () => {

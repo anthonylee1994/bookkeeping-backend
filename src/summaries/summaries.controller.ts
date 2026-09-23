@@ -1,8 +1,9 @@
 import {Controller, Get, Query} from "@nestjs/common";
 import {InjectRepository} from "@nestjs/typeorm";
-import {Between, Repository} from "typeorm";
+import {Repository} from "typeorm";
 
 import {CurrentUser} from "../auth/current-user.decorator";
+import {datetimeRange} from "../common/datetime-range";
 import {ApiError} from "../common/errors";
 import * as time from "../common/time";
 import {clampPage, clampPerPage, totalPages} from "../common/util";
@@ -74,7 +75,7 @@ export class SummariesController {
         const scope = await this.transactions.find({
             where: {
                 user_id: user.id,
-                occurred_at: Between(time.toDbDatetime(from), time.toDbDatetime(to)),
+                occurred_at: datetimeRange(from, to),
             },
         });
 

@@ -2,6 +2,7 @@
 
 1. **金額**：integer cents，永遠正數；方向由 `kind` 決定
 2. **時區**：全 app `Asia/Hong_Kong`。HK 冇 DST，所以用固定 `+08:00` offset；`src/common/time.ts` 用「UTC 欄位當作 HK wall clock」嘅 naive `Date` 表示法（只用 `Date.UTC` / `getUTC*`，process timezone 無關）。DB 讀寫 **唔轉 UTC**。顯示同計算（summary、recurring catch-up、日/週/月邊界）一律用呢套 helper
+   - **時間欄位儲存格式**：datetime 欄位（`occurred_at` / `next_run_at` / `created_at` …）以 TEXT 存 naive `YYYY-MM-DD HH:MM:SS.SSS`。舊 Rails / loco.rs 資料可能冇小數部分（`...HH:MM:SS`）或帶微秒，而 SQLite 對 TEXT 係逐字節排序：冇小數字串會排喺同一時刻嘅 `.SSS` **之前**。因此所有日期範圍查詢（`/summaries`、`/dashboard`、transactions list）**必須**用 `src/common/datetime-range.ts` 嘅 `datetimeRange(from, to)` — lower bound 取秒精度（含）、upper bound 取下一秒（唔含），否則啱啱落喺期間起點（例如 9 月 1 號 00:00:00）嘅交易會被漏掉
 3. **Weekly**：Asia/Hong_Kong Mon 00:00:00 至 Sun 23:59:59.999999
 4. **Monthly**：Asia/Hong_Kong 1 號 00:00:00 至月末 23:59:59.999999
 5. **Transfer**：唔計入 income/expense summary；獨立 `transfers` key；亦唔計入帳戶餘額（`account_balances` 只計 income/expense）

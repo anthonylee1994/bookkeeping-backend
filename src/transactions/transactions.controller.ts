@@ -4,6 +4,7 @@ import type {Request, Response} from "express";
 import {Between, DataSource, FindOptionsOrder, FindOptionsWhere, In, LessThanOrEqual, Like, MoreThanOrEqual, Repository} from "typeorm";
 
 import {CurrentUser} from "../auth/current-user.decorator";
+import {datetimeRange} from "../common/datetime-range";
 import {ApiError} from "../common/errors";
 import {JsonObject} from "../common/params";
 import * as time from "../common/time";
@@ -74,7 +75,7 @@ export class TransactionsController {
             if (!fromDate || !toDate) {
                 throw ApiError.invalidValue();
             }
-            base.occurred_at = Between(time.toDbDatetime(time.beginningOfDay(fromDate)), time.toDbDatetime(time.endOfDay(toDate)));
+            base.occurred_at = datetimeRange(time.beginningOfDay(fromDate), time.endOfDay(toDate));
         }
 
         if (kind !== undefined && kind !== "") {

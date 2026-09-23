@@ -1,8 +1,9 @@
 import {Controller, Get, Query} from "@nestjs/common";
 import {InjectRepository} from "@nestjs/typeorm";
-import {Between, Repository} from "typeorm";
+import {Repository} from "typeorm";
 
 import {CurrentUser} from "../auth/current-user.decorator";
+import {datetimeRange} from "../common/datetime-range";
 import {ApiError} from "../common/errors";
 import * as time from "../common/time";
 import {RecurringRule} from "../database/entities/recurring-rule.entity";
@@ -39,7 +40,7 @@ export class DashboardController {
         const inRange = await this.transactions.find({
             where: {
                 user_id: user.id,
-                occurred_at: Between(time.toDbDatetime(from), time.toDbDatetime(to)),
+                occurred_at: datetimeRange(from, to),
             },
         });
 
@@ -62,7 +63,7 @@ export class DashboardController {
             where: {
                 user_id: user.id,
                 status: 0,
-                next_run_at: Between(time.toDbDatetime(now), time.toDbDatetime(time.addDays(now, 7))),
+                next_run_at: datetimeRange(now, time.addDays(now, 7)),
             },
             order: {next_run_at: "ASC"},
         });

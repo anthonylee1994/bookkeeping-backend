@@ -12,6 +12,7 @@ import {IdempotencyKey} from "../../src/database/entities/idempotency-key.entity
 import {Merchant} from "../../src/database/entities/merchant.entity";
 import {RecurringOccurrence} from "../../src/database/entities/recurring-occurrence.entity";
 import {RecurringRule} from "../../src/database/entities/recurring-rule.entity";
+import {SummaryInsight} from "../../src/database/entities/summary-insight.entity";
 import {Transaction} from "../../src/database/entities/transaction.entity";
 import {User} from "../../src/database/entities/user.entity";
 
@@ -31,7 +32,7 @@ export type HttpClient = ReturnType<typeof http>;
 
 export async function resetDatabase(dataSource: DataSource): Promise<void> {
     await dataSource.transaction(async manager => {
-        for (const entity of [IdempotencyKey, AiImportLog, RecurringOccurrence, RecurringRule, Transaction, Merchant, Category, Account, User]) {
+        for (const entity of [IdempotencyKey, SummaryInsight, AiImportLog, RecurringOccurrence, RecurringRule, Transaction, Merchant, Category, Account, User]) {
             await manager.createQueryBuilder().delete().from(entity).execute();
         }
     });

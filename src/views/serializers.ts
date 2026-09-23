@@ -170,3 +170,34 @@ export function aiPayload(input: AiPayloadInput): Record<string, unknown> {
         latency_ms: input.log.latency_ms,
     };
 }
+
+export interface InsightPayloadInput {
+    period: string;
+    range: {from: string; to: string};
+    status: "success" | "failed" | "empty";
+    text: string | null;
+    highlights: string[];
+    cached: boolean;
+    generated_at: string | null;
+    error: string | null;
+    tokens_in: number | null;
+    tokens_out: number | null;
+    latency_ms: number | null;
+}
+
+/** Payload for `GET /summaries/:period/insight`. */
+export function insightPayload(input: InsightPayloadInput): Record<string, unknown> {
+    return {
+        period: input.period,
+        range: input.range,
+        status: input.status,
+        text: input.text,
+        highlights: input.highlights,
+        cached: input.cached,
+        generated_at: input.generated_at,
+        error: input.error,
+        tokens_in: input.tokens_in,
+        tokens_out: input.tokens_out,
+        latency_ms: input.latency_ms,
+    };
+}

@@ -159,7 +159,28 @@
 
 **去重**：用 `image_sha256` + `parse_signature` 查最近一筆，若 24 小時（`AI_CACHE_HOURS`）內 `status = success` 就回傳 cache；cache hit 時仍會用當前 user 分類重新 normalize `category_hint`。
 
-### 2.9 IdempotencyKey（獨立表）
+### 2.9 SummaryInsight（AI 收支概況 cache）
+
+- `id` uuid PK
+- `user_id` uuid FK, null: false, index
+- `period` string（`daily / weekly / monthly`）
+- `period_key` string（`daily`／`weekly` = range 起始日 `YYYY-MM-DD`；`monthly` = `YYYY-MM`）
+- `fingerprint` string（= SHA256 of 該期 deterministic summary 數字；交易一改就變）
+- `prompt_version` string（= `INSIGHT_PROMPT_VERSION`）
+- `provider` string, default: "deepseek"
+- `model` string, default: "deepseek-flash"
+- `status` integer（`1 = success`、`3 = partial`／被 reject）
+- `text` text, nullable
+- `highlights_json` json, default: `[]`
+- `raw_response` text, nullable
+- `error_message` text, nullable
+- `tokens_in` / `tokens_out` / `latency_ms` integer, nullable
+- timestamps
+- Index `(user_id, period, period_key, fingerprint, prompt_version)`（cache lookup）
+
+**Cache 語意**：讀取時以 `(user_id, period, period_key, fingerprint, prompt_version)` 查最新一筆；命中就唔 call DeepSeek。數據一變 fingerprint 就變，自然失效——**唔會**喺新增／修改／刪除交易時 eager 重算。失敗結果一樣會 cache，避免重覆花 tokens（要強制重算就落 `?refresh=1`）。
+
+### 2.10 IdempotencyKey（獨立表）
 
 - `id` uuid PK
 - `user_id` uuid FK, null: false

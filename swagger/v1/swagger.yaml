@@ -88,6 +88,28 @@ paths:
           content:
             application/json:
               schema: { $ref: '#/components/schemas/Summary' }
+  /api/v1/summaries/{period}/insight:
+    get:
+      tags: [Dashboard]
+      security: [{ bearerAuth: [] }]
+      summary: AI 收支概況（DeepSeek，只重述已計算數字）
+      parameters:
+        - name: period
+          in: path
+          required: true
+          schema: { type: string, enum: [daily, weekly, monthly] }
+        - { $ref: '#/components/parameters/Date' }
+        - name: refresh
+          in: query
+          required: false
+          schema: { type: boolean }
+      responses:
+        '200':
+          description: AI insight (cached until the underlying period data changes)
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/SummaryInsight' }
+        '502': { description: DeepSeek is unavailable }
   /api/v1/accounts:
     get:
       tags: [Accounts]
@@ -426,3 +448,21 @@ components:
           properties:
             data: { type: array, items: { type: object } }
             meta: { type: object }
+    SummaryInsight:
+      type: object
+      properties:
+        period: { type: string, enum: [daily, weekly, monthly] }
+        range:
+          type: object
+          properties:
+            from: { type: string, format: date-time }
+            to: { type: string, format: date-time }
+        status: { type: string, enum: [success, failed, empty] }
+        text: { type: string, nullable: true }
+        highlights: { type: array, items: { type: string } }
+        cached: { type: boolean }
+        generated_at: { type: string, format: date-time, nullable: true }
+        error: { type: string, nullable: true }
+        tokens_in: { type: integer, nullable: true }
+        tokens_out: { type: integer, nullable: true }
+        latency_ms: { type: integer, nullable: true }

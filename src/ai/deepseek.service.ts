@@ -2,8 +2,10 @@ import {Injectable} from "@nestjs/common";
 import {performance} from "node:perf_hooks";
 
 import {envOr} from "../config/env";
+import {allowedNumericTokens, insightPrompt, validateInsight} from "./insight";
 
 export const PROMPT_VERSION = "v2";
+export {INSIGHT_PROMPT_VERSION} from "./insight";
 export const STATUS_PENDING = 0;
 export const STATUS_SUCCESS = 1;
 export const STATUS_FAILED = 2;
@@ -24,6 +26,24 @@ export interface Outcome {
     tokens_out: number | null;
     latency_ms: number;
     status: number;
+}
+
+export interface InsightOutcome {
+    text: string | null;
+    highlights: string[];
+    raw_response: string | null;
+    error_message: string | null;
+    tokens_in: number | null;
+    tokens_out: number | null;
+    latency_ms: number;
+    status: number;
+}
+
+interface ChatCompletion {
+    rawText: string;
+    raw: Record<string, unknown>;
+    tokensIn: number | null;
+    tokensOut: number | null;
 }
 
 function baseUrl(): string {
@@ -158,15 +178,22 @@ function extractJsonObjects(text: string): unknown[] {
     return objects;
 }
 
-function extractJsonObject(content: string): unknown | null {
+function extractJsonObject(content: string, requiredKey: string): unknown | null {
     const candidates = extractJsonObjects(content);
     for (let index = candidates.length - 1; index >= 0; index -= 1) {
         const candidate = candidates[index];
-        if (typeof candidate === "object" && candidate !== null && !Array.isArray(candidate) && "amount_cents" in candidate) {
+        if (typeof candidate === "object" && candidate !== null && !Array.isArray(candidate) && requiredKey in candidate) {
             return candidate;
         }
     }
     return candidates.length > 0 ? candidates[candidates.length - 1] : null;
+}
+
+function messageContent(raw: Record<string, unknown>): string {
+    const choices = Array.isArray(raw.choices) ? raw.choices : [];
+    const first = (choices[0] ?? {}) as Record<string, unknown>;
+    const message = (first.message ?? {}) as Record<string, unknown>;
+    return typeof message.content === "string" ? message.content : "";
 }
 
 @Injectable()
@@ -192,41 +219,10 @@ export class DeepseekService {
             response_format: {type: "json_object"},
         };
 
-        let response: Response;
-        try {
-            response = await fetch(`${baseUrl().replace(/\/+$/, "")}/chat/completions`, {
-                method: "POST",
-                headers: {Authorization: `Bearer ${key}`, "Content-Type": "application/json"},
-                body: JSON.stringify(body),
-                signal: AbortSignal.timeout(30_000),
-            });
-        } catch (error) {
-            throw new DeepSeekError(String(error));
-        }
-
-        if (!response.ok) {
-            throw new DeepSeekError(`DeepSeek returned ${response.status}`);
-        }
-
-        const rawText = await response.text();
-        let raw: Record<string, unknown>;
-        try {
-            raw = JSON.parse(rawText) as Record<string, unknown>;
-        } catch (error) {
-            throw new DeepSeekError(`invalid DeepSeek JSON: ${String(error)}`);
-        }
-
+        const {rawText, raw, tokensIn, tokensOut} = await this.postChat(key, body);
         const latencyMs = Math.min(Math.round(performance.now() - started), 2_147_483_647);
-        const usage = (raw.usage ?? {}) as Record<string, unknown>;
-        const tokensIn = typeof usage.prompt_tokens === "number" ? usage.prompt_tokens : null;
-        const tokensOut = typeof usage.completion_tokens === "number" ? usage.completion_tokens : null;
 
-        const choices = Array.isArray(raw.choices) ? raw.choices : [];
-        const first = (choices[0] ?? {}) as Record<string, unknown>;
-        const message = (first.message ?? {}) as Record<string, unknown>;
-        const content = typeof message.content === "string" ? message.content : "";
-
-        let parsed = extractJsonObject(content);
+        let parsed = extractJsonObject(messageContent(raw), "amount_cents");
         if (typeof parsed === "object" && parsed !== null && !Array.isArray(parsed)) {
             const map = parsed as Record<string, unknown>;
             if (map.type === "json_object") {
@@ -255,6 +251,103 @@ export class DeepseekService {
             tokens_out: tokensOut,
             latency_ms: latencyMs,
             status: error === null ? STATUS_SUCCESS : STATUS_PARTIAL,
+        };
+    }
+
+    /**
+     * Generates a natural-language period insight from an already-computed
+     * fact sheet. Never introduces numbers: the output is rejected when it
+     * mentions a value that is not in the fact sheet.
+     */
+    async callInsight(factSheet: string): Promise<InsightOutcome> {
+        const started = performance.now();
+        const key = process.env.DEEPSEEK_API_KEY;
+        if (!key) {
+            throw new DeepSeekError("missing DEEPSEEK_API_KEY");
+        }
+
+        const allowed = allowedNumericTokens(factSheet);
+        const body = {
+            model: model(),
+            messages: [{role: "user", content: insightPrompt(factSheet)}],
+            response_format: {type: "json_object"},
+            temperature: 0.2,
+        };
+
+        const {rawText, raw, tokensIn, tokensOut} = await this.postChat(key, body);
+        const latencyMs = Math.min(Math.round(performance.now() - started), 2_147_483_647);
+
+        const parsed = extractJsonObject(messageContent(raw), "summary");
+        if (parsed === null) {
+            return {
+                text: null,
+                highlights: [],
+                raw_response: rawText,
+                error_message: "DeepSeek response did not contain a JSON object",
+                tokens_in: tokensIn,
+                tokens_out: tokensOut,
+                latency_ms: latencyMs,
+                status: STATUS_PARTIAL,
+            };
+        }
+
+        const validated = validateInsight(parsed, allowed);
+        if ("error" in validated) {
+            return {
+                text: null,
+                highlights: [],
+                raw_response: rawText,
+                error_message: validated.error,
+                tokens_in: tokensIn,
+                tokens_out: tokensOut,
+                latency_ms: latencyMs,
+                status: STATUS_PARTIAL,
+            };
+        }
+
+        return {
+            text: validated.insight.text,
+            highlights: validated.insight.highlights,
+            raw_response: rawText,
+            error_message: null,
+            tokens_in: tokensIn,
+            tokens_out: tokensOut,
+            latency_ms: latencyMs,
+            status: STATUS_SUCCESS,
+        };
+    }
+
+    private async postChat(key: string, body: unknown): Promise<ChatCompletion> {
+        let response: Response;
+        try {
+            response = await fetch(`${baseUrl().replace(/\/+$/, "")}/chat/completions`, {
+                method: "POST",
+                headers: {Authorization: `Bearer ${key}`, "Content-Type": "application/json"},
+                body: JSON.stringify(body),
+                signal: AbortSignal.timeout(30_000),
+            });
+        } catch (error) {
+            throw new DeepSeekError(String(error));
+        }
+
+        if (!response.ok) {
+            throw new DeepSeekError(`DeepSeek returned ${response.status}`);
+        }
+
+        const rawText = await response.text();
+        let raw: Record<string, unknown>;
+        try {
+            raw = JSON.parse(rawText) as Record<string, unknown>;
+        } catch (error) {
+            throw new DeepSeekError(`invalid DeepSeek JSON: ${String(error)}`);
+        }
+
+        const usage = (raw.usage ?? {}) as Record<string, unknown>;
+        return {
+            rawText,
+            raw,
+            tokensIn: typeof usage.prompt_tokens === "number" ? usage.prompt_tokens : null,
+            tokensOut: typeof usage.completion_tokens === "number" ? usage.completion_tokens : null,
         };
     }
 }

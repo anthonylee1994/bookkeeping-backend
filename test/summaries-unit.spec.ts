@@ -1,6 +1,7 @@
 import {beforeEach, describe, expect, it, vi} from "vitest";
 
 import {SummariesController} from "../src/summaries/summaries.controller";
+import {SummariesService} from "../src/summaries/summaries.service";
 import {Transaction} from "../src/database/entities/transaction.entity";
 import {ReportingService} from "../src/reports/reporting.service";
 import {MockRepo, mockRepo, repo, transactionFixture, userFixture} from "./helpers/unit";
@@ -15,7 +16,8 @@ describe("SummariesController (unit)", () => {
     beforeEach(() => {
         transactions = mockRepo();
         reporting = {loadCategoryNames: vi.fn().mockResolvedValue(new Map()), loadAccountNames: vi.fn().mockResolvedValue(new Map())};
-        controller = new SummariesController(repo<Transaction>(transactions), reporting as unknown as ReportingService);
+        const service = new SummariesService(repo<Transaction>(transactions), reporting as unknown as ReportingService);
+        controller = new SummariesController(service);
     });
 
     it("rejects an invalid date", async () => {

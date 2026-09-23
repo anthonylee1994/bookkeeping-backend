@@ -115,4 +115,53 @@ describe("DeepseekService (unit)", () => {
         const body = JSON.parse(fetchMock.mock.calls[0]?.[1]?.body as string) as {messages: Array<{content: Array<{text: string}>}>};
         expect(body.messages[0]?.content[0]?.text).toContain("no user-defined categories");
     });
+
+    describe("callInsight", () => {
+        const factSheet = "期間：2026年9月\n收入：HK$1,000.00\n支出：HK$400.00\n淨額：HK$600.00";
+
+        it("throws when the api key is missing", async () => {
+            vi.stubEnv("DEEPSEEK_API_KEY", "");
+            await expect(service.callInsight(factSheet)).rejects.toBeInstanceOf(DeepSeekError);
+        });
+
+        it("returns a validated insight", async () => {
+            vi.stubGlobal("fetch", vi.fn().mockResolvedValue(llm(JSON.stringify({summary: "9月收入 HK$1,000.00，支出 HK$400.00。", highlights: ["淨額 HK$600.00。"]}))));
+
+            const outcome = await service.callInsight(factSheet);
+
+            expect(outcome.status).toBe(STATUS_SUCCESS);
+            expect(outcome.text).toContain("收入");
+            expect(outcome.highlights).toHaveLength(1);
+            expect(outcome.error_message).toBeNull();
+        });
+
+        it("flags an invented number", async () => {
+            vi.stubGlobal("fetch", vi.fn().mockResolvedValue(llm(JSON.stringify({summary: "支出 HK$999.00。"}))));
+
+            const outcome = await service.callInsight(factSheet);
+
+            expect(outcome.status).toBe(STATUS_PARTIAL);
+            expect(outcome.text).toBeNull();
+            expect(outcome.error_message).toContain("999.00");
+        });
+
+        it("returns partial when there is no JSON object", async () => {
+            vi.stubGlobal("fetch", vi.fn().mockResolvedValue(llm("no json here")));
+
+            const outcome = await service.callInsight(factSheet);
+            expect(outcome.status).toBe(STATUS_PARTIAL);
+            expect(outcome.text).toBeNull();
+        });
+
+        it("sends the fact sheet with a low temperature", async () => {
+            const fetchMock = vi.fn().mockResolvedValue(llm(JSON.stringify({summary: "9月支出 HK$400.00。"})));
+            vi.stubGlobal("fetch", fetchMock);
+
+            await service.callInsight(factSheet);
+
+            const body = JSON.parse(fetchMock.mock.calls[0]?.[1]?.body as string) as {temperature: number; messages: Array<{content: string}>};
+            expect(body.temperature).toBe(0.2);
+            expect(body.messages[0]?.content).toContain(factSheet);
+        });
+    });
 });

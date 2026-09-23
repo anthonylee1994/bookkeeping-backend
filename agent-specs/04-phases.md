@@ -181,7 +181,7 @@ Content-Type: application/json
 
 **任務**
 
-- [x] Migration：Transaction（2.5）、IdempotencyKey（2.9）：全部 `id: :uuid`；FK 一律 `type: :uuid`
+- [x] Migration：Transaction（2.5）、IdempotencyKey（2.10）：全部 `id: :uuid`；FK 一律 `type: :uuid`
 - [x] `Transaction` model：enum kind / source、validation（ownership）、scope、`by_user`
 - [x] `TransactionsController`：index（filter + sort + offset/limit）、create、show、update、destroy（hard delete）
 - [x] Idempotency（controller concern，`POST /transactions` 同 `/ai/confirm`）：
@@ -577,3 +577,17 @@ dokku run bookkeeping-backend sh -c '
 - [x] `node dist/tasks/migrate.js` / `dist/tasks/normalize-sqlite-types.js` / `dist/tasks/maintenance.js` 正常
 - [x] 舊 DB（有表但冇 migration history）可直接接軌：init migration 用 `CREATE TABLE/INDEX IF NOT EXISTS`，唔再需要 P3005 baseline
 - [x] `DATABASE_URL` 保留 `file:../storage/...` 舊值（`../` 開頭沿用舊 Prisma 解析邏輯，所以部署設定唔使改）
+
+---
+
+### Phase N3：AI 收支概況（2026-09-23）
+
+**目標**：`/summaries` 加 AI 收支概況。後端先計好 deterministic 數字，只交 DeepSeek 寫成人話；AI 唔准自行計算（見 `03-business-rules` #19）。
+
+**驗收**
+
+- [x] `GET /summaries/{period}/insight`：`success / failed / empty`，支援 `?refresh=1`
+- [x] Cache table `summary_insights` + migration `20260923000000-summary-insights`
+- [x] Fingerprint lazy invalidation：交易一改就重算，唔喺 write path 做
+- [x] 數字護欄：輸出含 fact sheet 以外嘅數字即 reject（`src/ai/insight.ts`）
+- [x] `pnpm test` 全綠（268 tests）＋ `pnpm typecheck`／`pnpm format:check` 乾淨

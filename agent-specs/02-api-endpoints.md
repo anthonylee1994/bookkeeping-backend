@@ -134,6 +134,34 @@
 
 `by_category` 按 `expense_cents` 降序、再 `income_cents` 降序排列。
 
+**AI 收支概況**：`GET /summaries/{period}/insight?date=2026-09-16[&refresh=1]`
+
+- 以 `(user, period, period_key, fingerprint)` cache；指紋 = 該期 deterministic summary 數字嘅 hash，交易一改就失效重算（**唔會**喺寫入交易時 eager 更新）。
+- 模型只可以重述後端預先算好嘅數字；輸出含「唔喺 fact sheet 出現過」嘅數字 → reject（`status = failed`）。
+- 冇任何收入／支出／轉帳 → `status = empty`，唔會 call DeepSeek。
+- `refresh=1` 強制重算（繞過 cache）。
+- DeepSeek upstream 失敗 → 502 `upstream_error`。
+
+```json
+{
+  "data": {
+    "period": "monthly",
+    "range": { "from": "...", "to": "..." },
+    "status": "success",
+    "text": "2026年9月收入 HK$1,000.00，支出 HK$400.00，淨額 HK$600.00。",
+    "highlights": ["支出主要集中喺飲食。"],
+    "cached": false,
+    "generated_at": "2026-09-16T12:00:00+08:00",
+    "error": null,
+    "tokens_in": 120,
+    "tokens_out": 80,
+    "latency_ms": 900
+  }
+}
+```
+
+`status`：`success`（有 `text`）／`failed`（模型被 reject 或解析失敗，`error` 有原因）／`empty`（期間無數據）。
+
 ### 3.10 Health
 
 | Method | Path               | 說明                  |

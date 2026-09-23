@@ -1,7 +1,11 @@
 import * as time from "../common/time";
 import {sha256Hex} from "../common/util";
 
-export type InsightPeriod = "daily" | "weekly" | "monthly";
+/** Periods supported by the deterministic summary endpoints（日／週／月）。 */
+export type SummaryPeriod = "daily" | "weekly" | "monthly";
+
+/** Periods supported by the AI insight；日報太短、冇洞察價值，所以唔支援。 */
+export type InsightPeriod = "weekly" | "monthly";
 
 export interface BreakdownRow {
     category_id: string | null;
@@ -36,10 +40,10 @@ export interface SummaryData {
 }
 
 export function parseInsightPeriod(value: string): InsightPeriod | null {
-    return value === "daily" || value === "weekly" || value === "monthly" ? value : null;
+    return value === "weekly" || value === "monthly" ? value : null;
 }
 
-/** `daily`/`weekly` → the range start date, `monthly` → `YYYY-MM`. */
+/** `weekly` → the range start date, `monthly` → `YYYY-MM`. */
 export function periodKey(period: InsightPeriod, range: {from: string}): string {
     const date = range.from.slice(0, 10);
     return period === "monthly" ? date.slice(0, 7) : date;
@@ -72,15 +76,7 @@ export function previousPeriodDate(period: InsightPeriod, range: {from: string})
     if (start === null) {
         return range.from.slice(0, 10);
     }
-    switch (period) {
-        case "daily":
-            return time.toDbDate(time.addDays(start, -1));
-        case "weekly":
-            return time.toDbDate(time.addDays(start, -7));
-        case "monthly":
-        default:
-            return time.toDbDate(time.addMonthsClamped(start, -1));
-    }
+    return period === "weekly" ? time.toDbDate(time.addDays(start, -7)) : time.toDbDate(time.addMonthsClamped(start, -1));
 }
 
 function pad(value: number, length = 2): string {
@@ -102,13 +98,10 @@ export function periodLabel(period: InsightPeriod, range: {from: string; to: str
     const y = from.getUTCFullYear();
     const m = from.getUTCMonth() + 1;
     const d = from.getUTCDate();
-    if (period === "monthly") {
-        return `${y}年${m}月`;
-    }
     if (period === "weekly") {
         return `${y}年${m}月${d}日至${to.getUTCMonth() + 1}月${to.getUTCDate()}日`;
     }
-    return `${y}年${m}月${d}日`;
+    return `${y}年${m}月`;
 }
 
 export interface InsightCategoryFact {

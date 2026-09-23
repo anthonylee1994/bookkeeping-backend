@@ -136,6 +136,7 @@
 
 **AI 收支概況**：`GET /summaries/{period}/insight?date=2026-09-16[&refresh=1]`
 
+- 只支援 `weekly` / `monthly`；`daily`（以及其他期間）→ 422 `validation_error`（日報太短，冇洞察價值）。
 - 以 `(user, period, period_key, fingerprint)` cache；指紋 = 該期 deterministic summary 數字嘅 hash，交易一改就失效重算（**唔會**喺寫入交易時 eager 更新）。
 - 模型只可以重述後端預先算好嘅數字；輸出含「唔喺 fact sheet 出現過」嘅數字 → reject（`status = failed`）。
 - 冇任何收入／支出／轉帳 → `status = empty`，唔會 call DeepSeek。

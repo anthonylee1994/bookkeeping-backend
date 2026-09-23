@@ -92,12 +92,12 @@ paths:
     get:
       tags: [Dashboard]
       security: [{ bearerAuth: [] }]
-      summary: AI 收支概況（DeepSeek，只重述已計算數字）
+      summary: AI 收支概況（DeepSeek，只重述已計算數字；只支援 weekly／monthly）
       parameters:
         - name: period
           in: path
           required: true
-          schema: { type: string, enum: [daily, weekly, monthly] }
+          schema: { type: string, enum: [weekly, monthly] }
         - { $ref: '#/components/parameters/Date' }
         - name: refresh
           in: query
@@ -109,6 +109,7 @@ paths:
           content:
             application/json:
               schema: { $ref: '#/components/schemas/SummaryInsight' }
+        '422': { $ref: '#/components/responses/ValidationError' }
         '502': { description: DeepSeek is unavailable }
   /api/v1/accounts:
     get:

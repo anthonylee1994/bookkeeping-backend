@@ -163,8 +163,8 @@
 
 - `id` uuid PK
 - `user_id` uuid FK, null: false, index
-- `period` string（`daily / weekly / monthly`）
-- `period_key` string（`daily`／`weekly` = range 起始日 `YYYY-MM-DD`；`monthly` = `YYYY-MM`）
+- `period` string（只支援 `weekly / monthly`；`daily` 唔會寫入）
+- `period_key` string（`weekly` = range 起始日 `YYYY-MM-DD`；`monthly` = `YYYY-MM`）
 - `fingerprint` string（= SHA256 of 該期 deterministic summary 數字；交易一改就變）
 - `prompt_version` string（= `INSIGHT_PROMPT_VERSION`）
 - `provider` string, default: "deepseek"

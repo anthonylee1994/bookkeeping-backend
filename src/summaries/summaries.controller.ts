@@ -2,7 +2,7 @@ import {Controller, Get, Query} from "@nestjs/common";
 
 import {CurrentUser} from "../auth/current-user.decorator";
 import type {User} from "../database/entities/user.entity";
-import type {InsightPeriod} from "./insight";
+import type {SummaryPeriod} from "./insight";
 import {SummariesService} from "./summaries.service";
 
 @Controller("api/v1/summaries")
@@ -24,7 +24,7 @@ export class SummariesController {
         return this.summarize(user, "monthly", date, page, perPage);
     }
 
-    private async summarize(user: User, period: InsightPeriod, dateParam?: string, pageParam?: string, perPageParam?: string): Promise<unknown> {
+    private async summarize(user: User, period: SummaryPeriod, dateParam?: string, pageParam?: string, perPageParam?: string): Promise<unknown> {
         const {data} = await this.summaries.build(user.id, period, dateParam, pageParam, perPageParam);
         return {data};
     }

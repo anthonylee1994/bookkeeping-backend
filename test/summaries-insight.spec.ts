@@ -132,6 +132,9 @@ describe("summaries insight", () => {
         const period = await client.get("/api/v1/summaries/yearly/insight?date=2026-09-16").set(authHeader(fixture.token));
         expect(period.status).toBe(422);
 
+        const daily = await client.get("/api/v1/summaries/daily/insight?date=2026-09-16").set(authHeader(fixture.token));
+        expect(daily.status).toBe(422);
+
         const date = await client.get("/api/v1/summaries/monthly/insight?date=nope").set(authHeader(fixture.token));
         expect(date.status).toBe(422);
     });

@@ -10,9 +10,9 @@ import {Transaction} from "../database/entities/transaction.entity";
 import {accountTotals, categoryTotals, dailyBreakdown, sortedCategoryRows} from "../reports/reporting";
 import {ReportingService} from "../reports/reporting.service";
 import {transactionRow} from "../views/serializers";
-import type {BreakdownRow, DailyRow, InsightPeriod, SummaryData} from "./insight";
+import type {BreakdownRow, DailyRow, SummaryData, SummaryPeriod} from "./insight";
 
-function boundaries(period: InsightPeriod, date: Date): {from: Date; to: Date} {
+function boundaries(period: SummaryPeriod, date: Date): {from: Date; to: Date} {
     let first: Date;
     let last: Date;
     switch (period) {
@@ -47,7 +47,7 @@ export class SummariesService {
         private readonly reporting: ReportingService
     ) {}
 
-    async build(userId: string, period: InsightPeriod, dateParam?: string, pageParam?: string, perPageParam?: string): Promise<BuiltSummary> {
+    async build(userId: string, period: SummaryPeriod, dateParam?: string, pageParam?: string, perPageParam?: string): Promise<BuiltSummary> {
         let date: Date;
         if (dateParam !== undefined && dateParam !== "") {
             const parsed = time.parseDate(dateParam);

@@ -32,7 +32,9 @@ export class SummariesInsightController {
     ) {}
 
     /**
-     * AI 收支概況。以 `(user, period, period_key, fingerprint)` 為 cache key：
+     * AI 收支概況。只支援 `weekly` / `monthly`（`daily` 太短、冇洞察價值 → 422）。
+     *
+     * 以 `(user, period, period_key, fingerprint)` 為 cache key：
      * 數據一變 fingerprint 就變，自然失效重算，唔需要喺寫入交易時 eager 更新。
      */
     @Get(":period/insight")

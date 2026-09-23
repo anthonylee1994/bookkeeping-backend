@@ -71,12 +71,13 @@ net_cents     = income_cents - expense_cents
 18. **分頁上限**：`Pagy::DEFAULT[:max_per_page] = 100`；transactions / summaries 直接 offset + limit，`per_page` clamp 1..100（預設 25）
 19. **AI 收支概況（`/summaries/:period/insight`）**：
 
+- 只支援 `weekly` / `monthly`；`daily` 及其他期間回 422 `validation_error`（日報太短、冇洞察價值）。
 - 只屬「洞察」：後端先計好 deterministic 數字（今期收入／支出／淨額、儲蓄率、支出佔收入、分類 Top 3、支出集中度、最大單筆／單日支出、有支出日數、平均每日支出、上一期比較），再餵 DeepSeek 寫成人話。**AI 唔准計數**。
 - Prompt（`INSIGHT_PROMPT_VERSION = v2`）要求結論先行、唔准逐項複述 fact sheet、highlights 每個要係獨立「發現」；比例數字一律由後端算好放喺 fact sheet，model 只可引用。
 - Fact sheet 係唯一數字來源；model 輸出任何一個唔喺 fact sheet 出現過嘅數字 → `validateInsight` reject，`status = failed`（`src/ai/insight.ts`）。
 - Response 只回 `{ summary, highlights }`；`temperature = 0.2`、`response_format = json_object`、`INSIGHT_PROMPT_VERSION` 計入 cache key。
 - Cache key = `(user_id, period, period_key, fingerprint, prompt_version)`；`fingerprint = sha256(該期 aggregate + 筆數)`。交易新增／修改／刪除 → fingerprint 變 → 下次讀取自動重算（lazy invalidation，唔喺 write path 做）。
-- `period_key` 用期間起點：daily／weekly = 起始日、monthly = `YYYY-MM`，所以同一個月唔同日期共用同一 cache。
+- `period_key` 用期間起點：weekly = 起始日、monthly = `YYYY-MM`，所以同一個月唔同日期共用同一 cache。
 - 成功與失敗同樣 cache；`?refresh=1` 繞過 cache 強制重算（前端「重試」用）。
 - 私隱：只送 aggregate（分類名、金額、日期），唔送 note／商戶名／帳號。
 - 期間完全無數據 → `status = empty`，唔 call DeepSeek。

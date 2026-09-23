@@ -27,17 +27,17 @@ const ROWS = [{kind: 1, amount_cents: 40_000, category_id: "c1", occurred_at: "2
 describe("summaries/insight (unit)", () => {
     it("parses only supported periods", () => {
         expect(parseInsightPeriod("monthly")).toBe("monthly");
+        expect(parseInsightPeriod("weekly")).toBe("weekly");
+        expect(parseInsightPeriod("daily")).toBeNull();
         expect(parseInsightPeriod("yearly")).toBeNull();
     });
 
-    it("keys monthly by YYYY-MM and daily/weekly by date", () => {
+    it("keys monthly by YYYY-MM and weekly by date", () => {
         expect(periodKey("monthly", {from: "2026-09-01T00:00:00+08:00"})).toBe("2026-09");
         expect(periodKey("weekly", {from: "2026-09-14T00:00:00+08:00"})).toBe("2026-09-14");
-        expect(periodKey("daily", {from: "2026-09-16T00:00:00+08:00"})).toBe("2026-09-16");
     });
 
     it("computes the previous period representative date", () => {
-        expect(previousPeriodDate("daily", {from: "2026-09-16T00:00:00+08:00"})).toBe("2026-09-15");
         expect(previousPeriodDate("weekly", {from: "2026-09-14T00:00:00+08:00"})).toBe("2026-09-07");
         expect(previousPeriodDate("monthly", {from: "2026-09-01T00:00:00+08:00"})).toBe("2026-08-01");
     });
@@ -55,7 +55,6 @@ describe("summaries/insight (unit)", () => {
         expect(formatDollars(-500)).toBe("-5.00");
         expect(periodLabel("monthly", {from: "2026-09-01T00:00:00+08:00", to: "2026-09-30T23:59:59+08:00"})).toBe("2026年9月");
         expect(periodLabel("weekly", {from: "2026-09-14T00:00:00+08:00", to: "2026-09-20T23:59:59+08:00"})).toBe("2026年9月14日至9月20日");
-        expect(periodLabel("daily", {from: "2026-09-16T00:00:00+08:00", to: "2026-09-16T23:59:59+08:00"})).toBe("2026年9月16日");
     });
 
     it("builds a fact sheet containing only precomputed numbers", () => {
@@ -74,7 +73,7 @@ describe("summaries/insight (unit)", () => {
     });
 
     it("marks a largest expense as uncategorised when the row has no category", () => {
-        const facts = buildInsightFacts("daily", summary(), null, [{kind: 1, amount_cents: 100, category_id: null, occurred_at: "2026-09-16 10:00:00.000"}]);
+        const facts = buildInsightFacts("monthly", summary(), null, [{kind: 1, amount_cents: 100, category_id: null, occurred_at: "2026-09-16 10:00:00.000"}]);
         expect(facts.largestExpense?.name).toBe("未分類");
         expect(facts.previous).toBeNull();
     });

@@ -37,6 +37,7 @@
 - 用戶 confirm → 建立 transaction（`image_urls` + `source = ai`）＋回填 `AiImportLog.transaction_id`
 - cache hit 時仍會用當前 user 分類重新 `normalize_category_hint`，確保唔會漏出 AI 自創嘅分類名
 - 自然語言打字記帳（`/ai/interpret`）行同一套流程：`image_sha256 = sha256(text)`、`parse_signature` 帶 `text` marker、`source = text`、`image_urls = []`；prompt 會釘住當前香港時間俾 model 解析相對日期（今日／尋日），句子當作不可信用戶資料（防 prompt injection）。輸出一樣要過同一套 JSON 驗證；**一句可拆多筆**，model 回 `{ transactions: [...] }`，逐筆過驗證、丟棄無效筆、上限 20 筆，存成 `parsed_json` array。完全冇有效交易 → `status = partial`、`parsed = null`、`parsed_items = []`，前端當「解讀唔到」處理
+- 自然語言查詢（`/ai/query`）：同 `interpret` 一樣釘住當前香港時間同當作用戶資料（防 prompt injection），但**唔抽取交易、唔寫 DB、唔開 `AiImportLog`**。prompt 提供當前用戶嘅 account／category／merchant 名稱，model 只可以回名稱（唔准自創）；controller 逐個名稱（不分大小寫）解析成 id，對唔上嘅 merchant 名回落做 `q` 關鍵字，對唔上嘅 account／category 略去。日期永遠成對（`from` + `to`）先採用，金額只收非負整數 cents。完全冇可用條件 → `status = partial`、`filters = null`
 
 13. **AI JSON schema**（`src/ai/deepseek.service.ts` 手寫驗證；回傳唔符 schema → `status = partial`）：
 

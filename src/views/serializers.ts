@@ -182,6 +182,30 @@ export function aiPayload(input: AiPayloadInput): Record<string, unknown> {
     };
 }
 
+export interface AiQueryPayloadInput {
+    status: "success" | "partial";
+    /** URL 同名 filter params（`from`／`to`／`kind`／`account_id`／`category_id`／`merchant_id`／`q`／`min`／`max`），無可用條件時為 null。 */
+    filters: Record<string, unknown> | null;
+    explanation: string | null;
+    error: string | null;
+    tokens_in: number | null;
+    tokens_out: number | null;
+    latency_ms: number | null;
+}
+
+/** Payload for `POST /ai/query`. */
+export function aiQueryPayload(input: AiQueryPayloadInput): Record<string, unknown> {
+    return {
+        status: input.status,
+        filters: input.filters,
+        explanation: input.explanation,
+        error: input.error,
+        tokens_in: input.tokens_in,
+        tokens_out: input.tokens_out,
+        latency_ms: input.latency_ms,
+    };
+}
+
 export interface InsightPayloadInput {
     period: string;
     range: {from: string; to: string};

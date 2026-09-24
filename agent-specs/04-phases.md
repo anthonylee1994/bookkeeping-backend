@@ -591,3 +591,16 @@ dokku run bookkeeping-backend sh -c '
 - [x] Fingerprint lazy invalidation：交易一改就重算，唔喺 write path 做
 - [x] 數字護欄：輸出含 fact sheet 以外嘅數字即 reject（`src/ai/insight.ts`）
 - [x] `pnpm test` 全綠（268 tests）＋ `pnpm typecheck`／`pnpm format:check` 乾淨
+
+### Phase N4：AI 自然語言查詢（2026-09-24）
+
+**目標**：`POST /ai/query` 將一句自然語言問題譯成現有 transaction-list filter params，交給前端寫入交易列表 URL；純讀取、唔入帳（見 `03-business-rules` #12、`02-api-endpoints` 3.7）。
+
+**驗收**
+
+- [x] `POST /ai/query`：`{ text }`（1–500 字）→ `{ status, filters, explanation, ... }`
+- [x] `filters` 用 URL 同名 keys（`from`／`to`／`kind`／`account_id`／`category_id`／`merchant_id`／`q`／`min`／`max`）
+- [x] account／category／merchant 名稱由後端對當前用戶解析成 id；merchant 對唔上回落 `q`
+- [x] 冇可用條件 → `status = partial`、`filters = null`；DeepSeek 失敗 → 502
+- [x] 唔寫 DB、唔開 `AiImportLog`；rate limit 同其他 AI endpoint 一樣 10/min/user
+- [x] `pnpm typecheck` 同 `pnpm format` 乾淨

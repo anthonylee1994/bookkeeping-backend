@@ -10,15 +10,19 @@ import {JsonObject} from "../common/params";
 import * as time from "../common/time";
 import {jsonParse, jsonParseArray, newId, sha256Hex} from "../common/util";
 import {AiImportLog} from "../database/entities/ai-import-log.entity";
+import {Account} from "../database/entities/account.entity";
 import {Category} from "../database/entities/category.entity";
+import {Merchant} from "../database/entities/merchant.entity";
 import type {User} from "../database/entities/user.entity";
 import {IdempotencyService} from "../idempotency/idempotency.service";
 import {TransactionsService} from "../transactions/transactions.service";
-import {aiPayload, transactionPayloadWithNet} from "../views/serializers";
+import {aiPayload, aiQueryPayload, transactionPayloadWithNet} from "../views/serializers";
 import {DeepseekService, DeepSeekError, PROMPT_VERSION, STATUS_SUCCESS} from "./deepseek.service";
 
 /** 自然語言打字記帳嘅輸入上限（字元）。 */
 export const MAX_INTERPRET_TEXT = 500;
+/** 自然語言查詢嘅輸入上限（字元）。 */
+export const MAX_QUERY_TEXT = 500;
 
 interface CategoryInfo {
     id: string;
@@ -73,11 +77,47 @@ function storedParsedList(raw: unknown): Record<string, unknown>[] {
     return [];
 }
 
+interface NamedRef {
+    id: string;
+    name: string;
+}
+
+interface QueryRefs {
+    accounts: NamedRef[];
+    categories: CategoryInfo[];
+    merchants: NamedRef[];
+}
+
+/** 以不分大小寫嘅完整名稱比對，回對應 id；搵唔到回 null。 */
+function resolveNamed(items: NamedRef[], name: unknown): string | null {
+    if (typeof name !== "string") return null;
+    const target = name.trim().toLowerCase();
+    if (target === "") return null;
+    return items.find(item => item.name.trim().toLowerCase() === target)?.id ?? null;
+}
+
+/** 同名分類可能橫跨收入／支出；有指定 kind 就優先夾返同一 kind。 */
+function resolveCategory(categories: CategoryInfo[], name: unknown, kind: unknown): string | null {
+    if (typeof name !== "string") return null;
+    const target = name.trim().toLowerCase();
+    if (target === "") return null;
+    const matches = categories.filter(category => category.name.trim().toLowerCase() === target);
+    if (matches.length === 0) return null;
+    if (kind === "income" || kind === "expense") {
+        const kindValue = kind === "income" ? 0 : 1;
+        const byKind = matches.find(category => category.kind === kindValue);
+        if (byKind) return byKind.id;
+    }
+    return matches[0].id;
+}
+
 @Controller("api/v1/ai")
 export class AiController {
     constructor(
         @InjectRepository(AiImportLog) private readonly importLogs: Repository<AiImportLog>,
+        @InjectRepository(Account) private readonly accounts: Repository<Account>,
         @InjectRepository(Category) private readonly categories: Repository<Category>,
+        @InjectRepository(Merchant) private readonly merchants: Repository<Merchant>,
         private readonly deepseek: DeepseekService,
         private readonly transactions: TransactionsService,
         private readonly idempotency: IdempotencyService
@@ -284,6 +324,100 @@ export class AiController {
         });
 
         return {data: this.cachedPayload(log, categoryInfos)};
+    }
+
+    /**
+     * 自然語言查詢：將一句問題交俾 DeepSeek 譯成現有 transaction-list filter
+     * params（URL 同名），再由 controller 將 account／category／merchant 名稱解
+     * 析成當前用戶嘅 id。唔會寫入任何資料，亦唔開 `AiImportLog`。
+     */
+    @Post("query")
+    @HttpCode(200)
+    async query(@CurrentUser() user: User, @Body() body: JsonObject): Promise<unknown> {
+        if (typeof body.text !== "string" || body.text.trim() === "") {
+            throw ApiError.parameterMissing("text");
+        }
+        const text = body.text.trim();
+        if (text.length > MAX_QUERY_TEXT) {
+            throw new ApiError(422, "validation_error", `text 不可超過 ${MAX_QUERY_TEXT} 字`);
+        }
+
+        const accountRows = await this.accounts.find({where: {user_id: user.id}, order: {created_at: "ASC"}});
+        const categoryInfos = await this.loadCategoryInfos(user.id);
+        const merchantRows = await this.merchants.find({where: {user_id: user.id}, order: {usage_count: "DESC"}, take: 100});
+        const refs: QueryRefs = {
+            accounts: accountRows.map(row => ({id: row.id, name: row.name})),
+            categories: categoryInfos,
+            merchants: merchantRows.map(row => ({id: row.id, name: row.name})),
+        };
+
+        let outcome;
+        try {
+            outcome = await this.deepseek.callQuery(text, {
+                accounts: refs.accounts.map(item => item.name),
+                categories: refs.categories.map(category => ({kind: category.kind, name: category.name})),
+                merchants: refs.merchants.map(item => item.name),
+            });
+        } catch (error) {
+            if (error instanceof DeepSeekError) {
+                throw ApiError.upstreamError(error.message);
+            }
+            throw error;
+        }
+
+        const raw = outcome.query ?? {};
+        const filters: Record<string, unknown> = {};
+        if (typeof raw.from === "string" && typeof raw.to === "string") {
+            filters.from = raw.from;
+            filters.to = raw.to;
+        }
+        if (typeof raw.kind === "string") {
+            filters.kind = raw.kind;
+        }
+
+        const accountId = resolveNamed(refs.accounts, raw.account_name);
+        if (accountId !== null) {
+            filters.account_id = accountId;
+        }
+
+        const categoryId = resolveCategory(refs.categories, raw.category_name, raw.kind);
+        if (categoryId !== null) {
+            filters.category_id = categoryId;
+        }
+
+        const merchantId = resolveNamed(refs.merchants, raw.merchant_name);
+        if (merchantId !== null) {
+            filters.merchant_id = merchantId;
+        }
+
+        // 商戶對唔上名單時退回關鍵字搜尋，唔會漏咗用戶指明嘅商戶。
+        let keyword = typeof raw.keyword === "string" ? raw.keyword : null;
+        if (merchantId === null && typeof raw.merchant_name === "string" && raw.merchant_name.trim() !== "") {
+            keyword = raw.merchant_name.trim();
+        }
+        if (keyword !== null && keyword.trim() !== "") {
+            filters.q = keyword.trim();
+        }
+
+        if (typeof raw.min_amount_cents === "number") {
+            filters.min = raw.min_amount_cents;
+        }
+        if (typeof raw.max_amount_cents === "number") {
+            filters.max = raw.max_amount_cents;
+        }
+
+        const usable = Object.keys(filters).length > 0;
+        return {
+            data: aiQueryPayload({
+                status: usable ? "success" : "partial",
+                filters: usable ? filters : null,
+                explanation: outcome.explanation,
+                error: outcome.error_message,
+                tokens_in: outcome.tokens_in,
+                tokens_out: outcome.tokens_out,
+                latency_ms: outcome.latency_ms,
+            }),
+        };
     }
 
     private async fetchImage(url: string): Promise<{bytes: Buffer; contentType: string}> {

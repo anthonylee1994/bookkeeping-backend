@@ -4,8 +4,10 @@ import {afterEach, beforeEach, describe, expect, it, vi} from "vitest";
 
 import {AiController} from "../src/ai/ai.controller";
 import {DeepSeekError} from "../src/ai/deepseek.service";
+import {Account} from "../src/database/entities/account.entity";
 import {AiImportLog} from "../src/database/entities/ai-import-log.entity";
 import {Category} from "../src/database/entities/category.entity";
+import {Merchant} from "../src/database/entities/merchant.entity";
 import {IdempotencyService} from "../src/idempotency/idempotency.service";
 import {TransactionsService} from "../src/transactions/transactions.service";
 import {categoryFixture, importLogFixture, MockRepo, MockResponse, mockRepo, mockResponse, repo, transactionFixture, userFixture} from "./helpers/unit";
@@ -26,21 +28,30 @@ function rawRequest(body: unknown): RawBodyRequest<Request> {
 
 describe("AiController (unit)", () => {
     let importLogs: MockRepo;
+    let accounts: MockRepo;
     let categories: MockRepo;
-    let deepseek: {call: ReturnType<typeof vi.fn>; callInterpret: ReturnType<typeof vi.fn>};
+    let merchants: MockRepo;
+    let deepseek: {call: ReturnType<typeof vi.fn>; callInterpret: ReturnType<typeof vi.fn>; callQuery: ReturnType<typeof vi.fn>};
     let transactions: {createValidated: ReturnType<typeof vi.fn>};
     let idempotency: {wrap: ReturnType<typeof vi.fn>};
     let controller: AiController;
 
     beforeEach(() => {
         importLogs = mockRepo();
+        accounts = mockRepo();
         categories = mockRepo();
-        deepseek = {call: vi.fn(), callInterpret: vi.fn()};
+        merchants = mockRepo();
+        deepseek = {call: vi.fn(), callInterpret: vi.fn(), callQuery: vi.fn()};
         transactions = {createValidated: vi.fn()};
         idempotency = {wrap: vi.fn().mockImplementation(async (options: {run: () => Promise<unknown>}) => options.run())};
+        accounts.find.mockResolvedValue([]);
+        categories.find.mockResolvedValue([]);
+        merchants.find.mockResolvedValue([]);
         controller = new AiController(
             repo<AiImportLog>(importLogs),
+            repo<Account>(accounts),
             repo<Category>(categories),
+            repo<Merchant>(merchants),
             deepseek as never,
             transactions as unknown as TransactionsService,
             idempotency as unknown as IdempotencyService
@@ -193,6 +204,43 @@ describe("AiController (unit)", () => {
         deepseek.callInterpret.mockRejectedValue(new DeepSeekError("upstream down"));
 
         await expect(controller.interpret(userFixture({id: USER}), {text: "午餐"})).rejects.toMatchObject({status: 502, code: "upstream_error"});
+    });
+
+    it("query resolves names to ids and falls unknown merchants back to a keyword", async () => {
+        accounts.find.mockResolvedValue([{id: "a1", name: "現金"}]);
+        categories.find.mockResolvedValue([{id: "c1", kind: 1, name: "飲食"}]);
+        merchants.find.mockResolvedValue([{id: "m1", name: "Starbucks"}]);
+        deepseek.callQuery.mockResolvedValue({
+            query: {from: "2026-08-01", to: "2026-08-31", kind: "expense", account_name: "現金", category_name: "飲食", merchant_name: "譚仔"},
+            explanation: "上月現金飲食",
+            raw_response: "{}",
+            error_message: null,
+            tokens_in: 10,
+            tokens_out: 5,
+            latency_ms: 20,
+            status: 1,
+        });
+
+        const result = (await controller.query(userFixture({id: USER}), {text: " 上月 "})) as {data: Record<string, unknown>};
+
+        expect(deepseek.callQuery).toHaveBeenCalledWith("上月", {accounts: ["現金"], categories: [{kind: 1, name: "飲食"}], merchants: ["Starbucks"]});
+        expect(result.data).toMatchObject({status: "success", explanation: "上月現金飲食"});
+        expect(result.data.filters).toEqual({from: "2026-08-01", to: "2026-08-31", kind: "expense", account_id: "a1", category_id: "c1", q: "譚仔"});
+    });
+
+    it("query returns partial when no usable filter is translated", async () => {
+        deepseek.callQuery.mockResolvedValue({query: null, explanation: "唔係搵交易", raw_response: "{}", error_message: "no filter", tokens_in: 1, tokens_out: 1, latency_ms: 5, status: 3});
+
+        const result = (await controller.query(userFixture({id: USER}), {text: "今日天氣"})) as {data: Record<string, unknown>};
+
+        expect(result.data).toMatchObject({status: "partial", filters: null});
+    });
+
+    it("query requires text and maps a DeepSeek failure to a 502", async () => {
+        await expect(controller.query(userFixture({id: USER}), {})).rejects.toMatchObject({status: 422});
+
+        deepseek.callQuery.mockRejectedValue(new DeepSeekError("upstream down"));
+        await expect(controller.query(userFixture({id: USER}), {text: "午餐"})).rejects.toMatchObject({status: 502, code: "upstream_error"});
     });
 
     it("confirm requires an import log id", async () => {

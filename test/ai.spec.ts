@@ -4,7 +4,7 @@ import {afterAll, afterEach, beforeAll, beforeEach, describe, expect, it} from "
 import {sha256Hex} from "../src/common/util";
 import {DataSource} from "typeorm";
 import {createApp, http, HttpClient, resetDatabase} from "./helpers/app";
-import {authHeader, createImportLog, findLog, jpegBytes, registerAndLogin} from "./helpers/fixtures";
+import {authHeader, createImportLog, createMerchant, findLog, jpegBytes, registerAndLogin} from "./helpers/fixtures";
 import {MockResponse, MockServer, startMockServer} from "./helpers/mock-server";
 
 function deepseekBody(parsed: unknown): string {
@@ -397,5 +397,94 @@ describe("receipts & AI", () => {
 
         const stored = server.requests.find(request => request.path === "/chat/completions");
         expect(stored).toBeDefined();
+    });
+
+    it("query translates a question into list filters and resolves names to ids", async () => {
+        const server = await mockServer(request =>
+            request.method === "POST" && request.path === "/chat/completions"
+                ? {
+                      status: 200,
+                      headers: {"content-type": "application/json"},
+                      body: deepseekBody({
+                          filters: {from: "2026-08-01", to: "2026-08-31", kind: "expense", merchant_name: "Starbucks", category_name: "飲食"},
+                          explanation: "上月喺 Starbucks 嘅飲食支出",
+                      }),
+                  }
+                : {status: 404}
+        );
+
+        const fixture = await registerAndLogin(client);
+        const merchant = await createMerchant(dataSource, fixture.userId, "Starbucks", 3, fixture.expenseCategoryId);
+
+        const response = await client.post("/api/v1/ai/query").set(authHeader(fixture.token)).send({text: "上月喺 Starbucks 洗咗幾多"});
+
+        expect(response.status).toBe(200);
+        expect(response.body.data.status).toBe("success");
+        expect(response.body.data.filters).toEqual({
+            from: "2026-08-01",
+            to: "2026-08-31",
+            kind: "expense",
+            merchant_id: merchant.id,
+            category_id: fixture.expenseCategoryId,
+        });
+        expect(response.body.data.explanation).toBe("上月喺 Starbucks 嘅飲食支出");
+
+        const deepseek = server.requests.find(request => request.path === "/chat/completions");
+        const prompt = JSON.parse(deepseek!.body.toString("utf8")).messages[0].content as string;
+        expect(prompt).toContain("Starbucks");
+        expect(prompt).toContain("飲食");
+    });
+
+    it("query falls back to a keyword when the merchant is unknown", async () => {
+        await mockServer(request =>
+            request.method === "POST" && request.path === "/chat/completions"
+                ? {status: 200, headers: {"content-type": "application/json"}, body: deepseekBody({filters: {merchant_name: "譚仔"}, explanation: "搵譚仔"})}
+                : {status: 404}
+        );
+
+        const fixture = await registerAndLogin(client);
+        const response = await client.post("/api/v1/ai/query").set(authHeader(fixture.token)).send({text: "搵返所有譚仔"});
+
+        expect(response.status).toBe(200);
+        expect(response.body.data.filters).toEqual({q: "譚仔"});
+    });
+
+    it("query returns partial when the model finds no usable filter", async () => {
+        await mockServer(request =>
+            request.method === "POST" && request.path === "/chat/completions"
+                ? {status: 200, headers: {"content-type": "application/json"}, body: deepseekBody({filters: {}, explanation: "呢句唔係搵交易"})}
+                : {status: 404}
+        );
+
+        const fixture = await registerAndLogin(client);
+        const response = await client.post("/api/v1/ai/query").set(authHeader(fixture.token)).send({text: "今日天氣好好"});
+
+        expect(response.status).toBe(200);
+        expect(response.body.data.status).toBe("partial");
+        expect(response.body.data.filters).toBeNull();
+    });
+
+    it("query rejects blank or oversized text", async () => {
+        await mockServer(() => ({status: 404}));
+        const fixture = await registerAndLogin(client);
+        const headers = authHeader(fixture.token);
+
+        expect((await client.post("/api/v1/ai/query").set(headers).send({text: "   "})).status).toBe(422);
+        expect(
+            (
+                await client
+                    .post("/api/v1/ai/query")
+                    .set(headers)
+                    .send({text: "a".repeat(501)})
+            ).status
+        ).toBe(422);
+    });
+
+    it("query maps a DeepSeek failure to a 502", async () => {
+        await mockServer(request => (request.path === "/chat/completions" ? {status: 500} : {status: 404}));
+        const fixture = await registerAndLogin(client);
+
+        const response = await client.post("/api/v1/ai/query").set(authHeader(fixture.token)).send({text: "上月支出"});
+        expect(response.status).toBe(502);
     });
 });

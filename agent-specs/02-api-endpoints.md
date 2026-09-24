@@ -77,6 +77,7 @@
 | POST   | `/receipts/upload` | 上傳圖片 → LIHKG → 回 `{ url, sha256 }`（**唔**寫 Attachment）     |
 | POST   | `/ai/parse`        | 傳 `image_url` → DeepSeek `deepseek-flash` → preview               |
 | POST   | `/ai/interpret`    | 傳 `text`（1–500 字）→ DeepSeek 解析一句自然語言（可拆多筆）→ 同一款 preview |
+| POST   | `/ai/query`        | 傳 `text`（1–500 字）→ DeepSeek 譯成 transaction-list filter params（唔入帳、唔寫 DB） |
 | POST   | `/ai/confirm`      | 用戶確認 → 建立 transaction（寫入 `image_urls`），關聯 AiImportLog |
 
 > **注意**：`/ai/parse` 只接受 whitelist host 嘅 URL（預設 `img.eservice-hk.net`），防 SSRF。唔用 Attachment model。
@@ -84,6 +85,8 @@
 **`/ai/parse`**：`{ "image_url": "https://..." }` → 回 `{ id, source, image_urls, sha256, status, parsed, suggested_category_id, parsed_items, raw_response, error, tokens_in, tokens_out, latency_ms }`。`status = failed` 回 502 `upstream_error`；`partial` 回 200。`parsed_items` 係 `[{ parsed, suggested_category_id }]`，receipt 只有一筆。
 
 **`/ai/interpret`**：`{ "text": "尋日茶餐廳 45 蚊" }` → 同一款 preview（`source = text`、`image_urls = []`）。**一句可以拆多筆**：`parsed_items` 逐筆列出（最多 20 筆），`parsed`／`suggested_category_id` 保留第一筆方便舊 consumer；每筆都獨立做 category hint 正規化，`suggested_category_id` 對唔上當前用戶分類時為 `null`。缺 `text`／空白／超過 500 字 → 422 `validation_error`；一句都拆唔到（model 回空 array／冇有效金額）→ 200 `status = partial`、`parsed = null`、`parsed_items = []`；DeepSeek 失敗 → 502 `upstream_error`。後端會開一條 `source = text` 嘅 `AiImportLog`（`parsed_json` 存成 array），所以 `/ai/confirm` 可以逐筆照用（`image_urls = []`）。
+
+**`/ai/query`**：`{ "text": "上月喺 Starbucks 洗咗幾多" }` → `{ status, filters, explanation, error, tokens_in, tokens_out, latency_ms }`。後端將問題譯成**現有 transaction-list filter params**，唔會寫入 DB、亦唔開 `AiImportLog`（純讀取翻譯）。`filters` 用 URL 同名 keys：`from`／`to`（`YYYY-MM-DD`，永遠成對出現或同時缺省）／`kind`／`account_id`／`category_id`／`merchant_id`／`q`／`min`／`max`（cents）；account／category／merchant 由 model 用名稱指出，後端再對當前用戶名稱（不分大小寫）解析成 id，對唔上嘅 merchant 名回落 `q`，對唔上嘅 account／category 直接略去。model 完全譯唔到可用條件 → 200 `status = partial`、`filters = null`。缺 `text`／空白／超過 500 字 → 422 `validation_error`；DeepSeek 失敗 → 502 `upstream_error`。前端只負責將 `filters` 寫入交易列表 URL。
 
 **`/ai/confirm`**：body 需帶 `ai_import_log_id`（或 `import_log_id`）＋ transaction 欄位；建 transaction（`source = ai`，`image_urls` 未提供時用 log 嘅），回填 `AiImportLog.transaction_id`。支援 `Idempotency-Key`。多筆 preview 逐筆 confirm 時會共用同一條 log，`transaction_id` 最後一筆覆蓋之前（單一欄位，唔另開關聯表）。`receipts/upload` 成功回 201。
 

@@ -318,6 +318,23 @@ paths:
         '200': { description: "AI preview（source=text，無 image_urls；parsed_items 逐筆列出，最多 20 筆，parsed/suggested_category_id 為第一筆；一句都拆唔到時 status=partial、parsed_items=[]）" }
         '422': { description: text missing／blank／over 500 characters }
         '502': { description: DeepSeek is unavailable }
+  /api/v1/ai/query:
+    post:
+      tags: [Receipts and AI]
+      security: [{ bearerAuth: [] }]
+      summary: Translate a natural-language question into transaction-list filters
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [text]
+              properties: { text: { type: string, minLength: 1, maxLength: 500 } }
+      responses:
+        '200': { description: "AI query（status=success/partial；filters 為 URL 同名 list params：from／to／kind／account_id／category_id／merchant_id／q／min／max，冇可用條件時 status=partial、filters=null；explanation 為繁中覆述；唔寫入任何資料）" }
+        '422': { description: text missing／blank／over 500 characters }
+        '502': { description: DeepSeek is unavailable }
   /api/v1/ai/confirm:
     post:
       tags: [Receipts and AI]

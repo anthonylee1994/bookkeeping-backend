@@ -113,7 +113,7 @@ describe("AiController (unit)", () => {
         importLogs.findOne.mockResolvedValue(null);
         categories.find.mockResolvedValue([categoryFixture({id: "c1", kind: 1, name: "飲食"})]);
         deepseek.callInterpret.mockResolvedValue({
-            parsed: {amount_cents: 500, kind: "expense", occurred_at: "2026-09-14T10:00:00+08:00", category_hint: "飲食"},
+            parsed: [{amount_cents: 500, kind: "expense", occurred_at: "2026-09-14T10:00:00+08:00", category_hint: "飲食"}],
             raw_response: "{}",
             error_message: null,
             tokens_in: 10,
@@ -129,6 +129,51 @@ describe("AiController (unit)", () => {
         expect(saved).toMatchObject({source: "text", image_urls: "[]", status: 1});
         expect(result.data).toMatchObject({source: "text", suggested_category_id: "c1"});
         expect(result.data.parsed).toMatchObject({amount_cents: 500});
+        expect(result.data.parsed_items).toEqual([expect.objectContaining({suggested_category_id: "c1", parsed: expect.objectContaining({amount_cents: 500})})]);
+    });
+
+    it("interpret keeps every parsed transaction in parsed_items", async () => {
+        importLogs.findOne.mockResolvedValue(null);
+        categories.find.mockResolvedValue([]);
+        deepseek.callInterpret.mockResolvedValue({
+            parsed: [
+                {amount_cents: 3000, kind: "expense", occurred_at: "2026-09-14T08:00:00+08:00", category_hint: null},
+                {amount_cents: 5000, kind: "expense", occurred_at: "2026-09-14T12:00:00+08:00", category_hint: null},
+            ],
+            raw_response: "{}",
+            error_message: null,
+            tokens_in: 10,
+            tokens_out: 5,
+            latency_ms: 20,
+            status: 1,
+        });
+
+        const result = (await controller.interpret(userFixture({id: USER}), {text: "早餐 30 午餐 50"})) as {data: Record<string, unknown>};
+
+        expect(result.data.parsed).toMatchObject({amount_cents: 3000});
+        expect(result.data.parsed_items).toHaveLength(2);
+        expect(JSON.parse((importLogs.save.mock.calls[0]?.[0] as AiImportLog).parsed_json ?? "[]")).toHaveLength(2);
+    });
+
+    it("interpret stores no parsed_json when no transaction is extracted", async () => {
+        importLogs.findOne.mockResolvedValue(null);
+        categories.find.mockResolvedValue([]);
+        deepseek.callInterpret.mockResolvedValue({
+            parsed: null,
+            raw_response: "{}",
+            error_message: "no transaction",
+            tokens_in: 10,
+            tokens_out: 5,
+            latency_ms: 20,
+            status: 3,
+        });
+
+        const result = (await controller.interpret(userFixture({id: USER}), {text: "今日天氣好"})) as {data: Record<string, unknown>};
+
+        expect(result.data.status).toBe("partial");
+        expect(result.data.parsed).toBeNull();
+        expect(result.data.parsed_items).toEqual([]);
+        expect((importLogs.save.mock.calls[0]?.[0] as AiImportLog).parsed_json).toBeNull();
     });
 
     it("interpret returns a fresh cache hit without calling DeepSeek", async () => {
@@ -138,6 +183,7 @@ describe("AiController (unit)", () => {
         const result = (await controller.interpret(userFixture({id: USER}), {text: "x"})) as {data: Record<string, unknown>};
 
         expect(result.data).toMatchObject({id: "log-text", source: "text"});
+        expect(result.data.parsed_items).toEqual([expect.objectContaining({parsed: expect.objectContaining({amount_cents: 1234})})]);
         expect(deepseek.callInterpret).not.toHaveBeenCalled();
     });
 

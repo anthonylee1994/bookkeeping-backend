@@ -299,7 +299,7 @@ describe("receipts & AI", () => {
                 ? {
                       status: 200,
                       headers: {"content-type": "application/json"},
-                      body: deepseekBody({amount_cents: 4500, kind: "expense", occurred_at: "2026-09-14T10:00:00+08:00", merchant_name: "茶餐廳", confidence: 0.9}),
+                      body: deepseekBody({transactions: [{amount_cents: 4500, kind: "expense", occurred_at: "2026-09-14T10:00:00+08:00", merchant_name: "茶餐廳", confidence: 0.9}]}),
                   }
                 : {status: 404}
         );
@@ -311,10 +311,38 @@ describe("receipts & AI", () => {
         expect(response.body.data.source).toBe("text");
         expect(response.body.data.image_urls).toEqual([]);
         expect(response.body.data.parsed.amount_cents).toBe(4500);
+        expect(response.body.data.parsed_items).toHaveLength(1);
+        expect(response.body.data.parsed_items[0].parsed.amount_cents).toBe(4500);
 
         const cached = await client.post("/api/v1/ai/interpret").set(authHeader(fixture.token)).send({text: "尋日茶餐廳 45 蚊"});
         expect(cached.body.data.id).toBe(response.body.data.id);
+        expect(cached.body.data.parsed_items).toHaveLength(1);
         expect(server.countRequests("/chat/completions")).toBe(1);
+    });
+
+    it("interpret splits a multi-transaction sentence into one item per transaction", async () => {
+        await mockServer(request =>
+            request.method === "POST" && request.path === "/chat/completions"
+                ? {
+                      status: 200,
+                      headers: {"content-type": "application/json"},
+                      body: deepseekBody({
+                          transactions: [
+                              {amount_cents: 3000, kind: "expense", occurred_at: "2026-09-14T08:00:00+08:00", merchant_name: "茶餐廳", confidence: 0.9},
+                              {amount_cents: 5000, kind: "expense", occurred_at: "2026-09-14T12:00:00+08:00", confidence: 0.9},
+                              {amount_cents: 2000, kind: "expense", occurred_at: "2026-09-14T18:00:00+08:00", confidence: 0.9},
+                          ],
+                      }),
+                  }
+                : {status: 404}
+        );
+
+        const fixture = await registerAndLogin(client);
+        const response = await client.post("/api/v1/ai/interpret").set(authHeader(fixture.token)).send({text: "早餐 30 午餐 50 車費 20"});
+
+        expect(response.status).toBe(200);
+        expect(response.body.data.parsed.amount_cents).toBe(3000);
+        expect(response.body.data.parsed_items.map((item: {parsed: {amount_cents: number}}) => item.parsed.amount_cents)).toEqual([3000, 5000, 2000]);
     });
 
     it("interpret rejects blank or oversized text", async () => {

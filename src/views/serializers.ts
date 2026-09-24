@@ -149,21 +149,31 @@ export function rulePayload(rule: RecurringRule): Record<string, unknown> {
     };
 }
 
-export interface AiPayloadInput {
-    log: AiImportLog;
+export interface AiParsedItemPayload {
     parsed: unknown;
     suggestedCategoryId: string | null;
 }
 
+export interface AiPayloadInput {
+    log: AiImportLog;
+    parsedItems: AiParsedItemPayload[];
+}
+
 export function aiPayload(input: AiPayloadInput): Record<string, unknown> {
+    const first = input.parsedItems[0];
     return {
         id: input.log.id,
         source: input.log.source ?? "receipt",
         image_urls: jsonParseArray(input.log.image_urls),
         sha256: input.log.image_sha256,
         status: aiStatusName(input.log.status),
-        parsed: input.parsed,
-        suggested_category_id: input.suggestedCategoryId,
+        /**
+         * `parsed`／`suggested_category_id` 保留第一筆，維持舊 consumer（receipt 覆核）
+         * 向後兼容；新 consumer 讀 `parsed_items` 拎齊多筆。
+         */
+        parsed: first?.parsed ?? null,
+        suggested_category_id: first?.suggestedCategoryId ?? null,
+        parsed_items: input.parsedItems.map(item => ({parsed: item.parsed, suggested_category_id: item.suggestedCategoryId})),
         raw_response: input.log.raw_response,
         error: input.log.error_message,
         tokens_in: input.log.tokens_in,

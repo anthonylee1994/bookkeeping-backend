@@ -61,6 +61,18 @@ function isPlainObject(value: unknown): value is Record<string, unknown> {
     return typeof value === "object" && value !== null && !Array.isArray(value);
 }
 
+interface ParsedItem {
+    parsed: Record<string, unknown>;
+    suggestedCategoryId: string | null;
+}
+
+/** `parsed_json` 新格式係 array（多筆），舊格式／receipt 係單一 object。 */
+function storedParsedList(raw: unknown): Record<string, unknown>[] {
+    if (Array.isArray(raw)) return raw.filter(isPlainObject);
+    if (isPlainObject(raw)) return [raw];
+    return [];
+}
+
 @Controller("api/v1/ai")
 export class AiController {
     constructor(
@@ -100,10 +112,20 @@ export class AiController {
 
     private cachedPayload(log: AiImportLog, categoryInfos: CategoryInfo[]): Record<string, unknown> {
         const raw = log.parsed_json ? jsonParse<unknown>(log.parsed_json, null) : null;
-        const normalizedRaw = raw === null ? null : normalizeCategoryHint(raw, categoryInfos);
-        const normalized = normalizedRaw === null ? {} : normalizedRaw;
-        const suggested = isPlainObject(normalized) ? (matchCategory(normalized, categoryInfos)?.id ?? null) : null;
-        return aiPayload({log, parsed: normalized, suggestedCategoryId: suggested});
+        return aiPayload({log, parsedItems: this.normalizedItems(raw, categoryInfos)});
+    }
+
+    /**
+     * 由 `parsed_json` 還原多筆 items。新格式係 array，舊 cache／receipt 係單一
+     * object；每筆都重新對當前用戶分類做 `normalizeCategoryHint`，唔會漏出 AI
+     * 自創嘅分類名。
+     */
+    private normalizedItems(raw: unknown, categoryInfos: CategoryInfo[]): ParsedItem[] {
+        return storedParsedList(raw).map(item => {
+            const normalized = normalizeCategoryHint(item, categoryInfos);
+            const parsed = isPlainObject(normalized) ? normalized : item;
+            return {parsed, suggestedCategoryId: matchCategory(parsed, categoryInfos)?.id ?? null};
+        });
     }
 
     @Post("parse")
@@ -233,7 +255,10 @@ export class AiController {
             throw error;
         }
 
-        const parsed = outcome.parsed === null ? null : normalizeCategoryHint(outcome.parsed, categoryInfos);
+        const items = (Array.isArray(outcome.parsed) ? outcome.parsed : [])
+            .filter(isPlainObject)
+            .map(item => normalizeCategoryHint(item, categoryInfos))
+            .filter(isPlainObject);
 
         const now = time.toDbDatetime(time.nowLocal());
         const log = await this.importLogs.save({
@@ -250,7 +275,7 @@ export class AiController {
             latency_ms: outcome.latency_ms,
             status: outcome.status,
             raw_response: outcome.raw_response,
-            parsed_json: parsed === null ? null : JSON.stringify(parsed),
+            parsed_json: items.length === 0 ? null : JSON.stringify(items),
             error_message: outcome.error_message,
             transaction_id: null,
             idempotency_key: null,

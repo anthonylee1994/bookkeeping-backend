@@ -33,10 +33,10 @@
 - parse：whitelist host → 計 sha256 + `parse_signature`（= `PROMPT_VERSION` + 該 user 分類名單）→ 查 `AiImportLog` 24 小時內、同 sha256 同 signature 嘅 `status = success` 記錄 → 有就回 cache
 - 冇就：backend fetch 圖 → base64 inline → DeepSeek `deepseek-flash` vision
 - DeepSeek prompt 會帶入用戶現有分類（分 income／expense 列出），要求 model 逐字 copy，唔准翻譯或自創
-- 回傳 preview JSON（唔直接入帳）：`parsed`、`suggested_category_id`（category_hint 對得上當前 user 分類先有值，否則 nil）、`status`、`raw_response`、`error`、tokens、latency
+- 回傳 preview JSON（唔直接入帳）：`parsed`、`suggested_category_id`、`parsed_items`（`[{ parsed, suggested_category_id }]`，receipt 恆一筆）、`status`、`raw_response`、`error`、tokens、latency
 - 用戶 confirm → 建立 transaction（`image_urls` + `source = ai`）＋回填 `AiImportLog.transaction_id`
 - cache hit 時仍會用當前 user 分類重新 `normalize_category_hint`，確保唔會漏出 AI 自創嘅分類名
-- 自然語言打字記帳（`/ai/interpret`）行同一套流程：`image_sha256 = sha256(text)`、`parse_signature` 帶 `text` marker、`source = text`、`image_urls = []`；prompt 會釘住當前香港時間俾 model 解析相對日期（今日／尋日），句子當作不可信用戶資料（防 prompt injection）。輸出一樣要過同一套 JSON 驗證；唔似交易（`amount_cents = null`）→ `status = partial`，前端當「解讀唔到」處理
+- 自然語言打字記帳（`/ai/interpret`）行同一套流程：`image_sha256 = sha256(text)`、`parse_signature` 帶 `text` marker、`source = text`、`image_urls = []`；prompt 會釘住當前香港時間俾 model 解析相對日期（今日／尋日），句子當作不可信用戶資料（防 prompt injection）。輸出一樣要過同一套 JSON 驗證；**一句可拆多筆**，model 回 `{ transactions: [...] }`，逐筆過驗證、丟棄無效筆、上限 20 筆，存成 `parsed_json` array。完全冇有效交易 → `status = partial`、`parsed = null`、`parsed_items = []`，前端當「解讀唔到」處理
 
 13. **AI JSON schema**（`src/ai/deepseek.service.ts` 手寫驗證；回傳唔符 schema → `status = partial`）：
 

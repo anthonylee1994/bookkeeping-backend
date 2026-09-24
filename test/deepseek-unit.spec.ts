@@ -123,7 +123,7 @@ describe("DeepseekService (unit)", () => {
         });
 
         it("parses a valid completion and sends the sentence with the pinned date", async () => {
-            const fetchMock = vi.fn().mockResolvedValue(llm(valid));
+            const fetchMock = vi.fn().mockResolvedValue(llm(JSON.stringify({transactions: [{amount_cents: 1234, kind: "expense", occurred_at: "2026-09-14T10:00:00+08:00"}]})));
             vi.stubGlobal("fetch", fetchMock);
 
             const outcome = await service.callInterpret("尋日午餐 12.34", [
@@ -132,7 +132,7 @@ describe("DeepseekService (unit)", () => {
             ]);
 
             expect(outcome.status).toBe(STATUS_SUCCESS);
-            expect(outcome.parsed).toMatchObject({amount_cents: 1234, kind: "expense"});
+            expect(outcome.parsed).toEqual([expect.objectContaining({amount_cents: 1234, kind: "expense"})]);
 
             const body = JSON.parse(fetchMock.mock.calls[0]?.[1]?.body as string) as {messages: Array<{content: string}>};
             const prompt = body.messages[0]?.content ?? "";
@@ -142,13 +142,55 @@ describe("DeepseekService (unit)", () => {
             expect(prompt).toContain('INCOME categories: ["薪水"]');
         });
 
+        it("extracts every transaction from a multi-transaction sentence", async () => {
+            const fetchMock = vi.fn().mockResolvedValue(
+                llm(
+                    JSON.stringify({
+                        transactions: [
+                            {amount_cents: 3000, kind: "expense", occurred_at: "2026-09-14T08:00:00+08:00", category_hint: "飲食"},
+                            {amount_cents: 5000, kind: "expense", occurred_at: "2026-09-14T12:00:00+08:00"},
+                        ],
+                    })
+                )
+            );
+            vi.stubGlobal("fetch", fetchMock);
+
+            const outcome = await service.callInterpret("早餐 30 午餐 50", []);
+
+            expect(outcome.status).toBe(STATUS_SUCCESS);
+            expect(outcome.parsed).toHaveLength(2);
+            expect(outcome.parsed).toEqual([expect.objectContaining({amount_cents: 3000}), expect.objectContaining({amount_cents: 5000})]);
+        });
+
+        it("drops invalid entries but keeps the valid ones", async () => {
+            vi.stubGlobal(
+                "fetch",
+                vi.fn().mockResolvedValue(
+                    llm(
+                        JSON.stringify({
+                            transactions: [
+                                {amount_cents: 0, kind: "expense", occurred_at: "2026-09-14T08:00:00+08:00"},
+                                {amount_cents: 5000, kind: "expense", occurred_at: "2026-09-14T12:00:00+08:00"},
+                            ],
+                        })
+                    )
+                )
+            );
+
+            const outcome = await service.callInterpret("早餐 0 午餐 50", []);
+
+            expect(outcome.status).toBe(STATUS_SUCCESS);
+            expect(outcome.parsed).toEqual([expect.objectContaining({amount_cents: 5000})]);
+        });
+
         it("flags a sentence with no positive amount as partial", async () => {
-            vi.stubGlobal("fetch", vi.fn().mockResolvedValue(llm(JSON.stringify({amount_cents: null, kind: "expense", occurred_at: "2026-09-14T10:00:00+08:00"}))));
+            vi.stubGlobal("fetch", vi.fn().mockResolvedValue(llm(JSON.stringify({transactions: []}))));
 
             const outcome = await service.callInterpret("今日天氣好", []);
 
             expect(outcome.status).toBe(STATUS_PARTIAL);
-            expect(outcome.error_message).toContain("amount_cents");
+            expect(outcome.parsed).toBeNull();
+            expect(outcome.error_message).toContain("positive amount");
         });
     });
 

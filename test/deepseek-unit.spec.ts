@@ -194,6 +194,59 @@ describe("DeepseekService (unit)", () => {
         });
     });
 
+    describe("callSuggestCategory", () => {
+        const categories = [
+            {kind: 1, name: "飲食"},
+            {kind: 1, name: "交通"},
+            {kind: 0, name: "薪水"},
+        ];
+
+        it("throws when the api key is missing", async () => {
+            vi.stubEnv("DEEPSEEK_API_KEY", "");
+            await expect(service.callSuggestCategory({kind: "expense", merchantName: "茶餐廳", note: null}, categories)).rejects.toBeInstanceOf(DeepSeekError);
+        });
+
+        it("parses a suggested name and offers only the matching kind's categories", async () => {
+            const fetchMock = vi.fn().mockResolvedValue(llm(JSON.stringify({category_name: "交通", confidence: 0.8})));
+            vi.stubGlobal("fetch", fetchMock);
+
+            const outcome = await service.callSuggestCategory({kind: "expense", merchantName: "MTR", note: "過海"}, categories);
+
+            expect(outcome.status).toBe(STATUS_SUCCESS);
+            expect(outcome.category_name).toBe("交通");
+            expect(outcome.confidence).toBe(0.8);
+            expect(outcome.error_message).toBeNull();
+
+            const body = JSON.parse(fetchMock.mock.calls[0]?.[1]?.body as string) as {temperature: number; messages: Array<{content: string}>};
+            const prompt = body.messages[0]?.content ?? "";
+            expect(body.temperature).toBe(0.1);
+            expect(prompt).toContain('EXPENSE categories: ["飲食","交通"]');
+            expect(prompt).not.toContain("INCOME categories");
+            expect(prompt).toContain('"MTR"');
+            expect(prompt).toContain('"過海"');
+        });
+
+        it("returns partial with no error when the model finds no fit", async () => {
+            vi.stubGlobal("fetch", vi.fn().mockResolvedValue(llm(JSON.stringify({category_name: null, confidence: 0.2}))));
+
+            const outcome = await service.callSuggestCategory({kind: "income", merchantName: null, note: "雜項"}, categories);
+
+            expect(outcome.status).toBe(STATUS_PARTIAL);
+            expect(outcome.category_name).toBeNull();
+            expect(outcome.error_message).toBeNull();
+        });
+
+        it("returns partial when there is no JSON object", async () => {
+            vi.stubGlobal("fetch", vi.fn().mockResolvedValue(llm("no json here")));
+
+            const outcome = await service.callSuggestCategory({kind: "expense", merchantName: "茶餐廳", note: null}, categories);
+
+            expect(outcome.status).toBe(STATUS_PARTIAL);
+            expect(outcome.category_name).toBeNull();
+            expect(outcome.error_message).toContain("did not contain a JSON object");
+        });
+    });
+
     describe("callInsight", () => {
         const factSheet = "期間：2026年9月\n收入：HK$1,000.00\n支出：HK$400.00\n淨額：HK$600.00";
 

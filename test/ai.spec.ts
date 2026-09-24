@@ -487,4 +487,50 @@ describe("receipts & AI", () => {
         const response = await client.post("/api/v1/ai/query").set(authHeader(fixture.token)).send({text: "上月支出"});
         expect(response.status).toBe(502);
     });
+
+    it("suggest-category resolves the model's name to the user's category", async () => {
+        const server = await mockServer(request =>
+            request.method === "POST" && request.path === "/chat/completions"
+                ? {status: 200, headers: {"content-type": "application/json"}, body: deepseekBody({category_name: "飲食", confidence: 0.8})}
+                : {status: 404}
+        );
+
+        const fixture = await registerAndLogin(client);
+        const response = await client.post("/api/v1/ai/suggest-category").set(authHeader(fixture.token)).send({kind: "expense", merchant_name: "茶餐廳", note: "午餐"});
+
+        expect(response.status).toBe(200);
+        expect(response.body.data.status).toBe("success");
+        expect(response.body.data.category_id).toBe(fixture.expenseCategoryId);
+        expect(response.body.data.category_name).toBe("飲食");
+
+        const deepseek = server.requests.find(request => request.path === "/chat/completions");
+        const prompt = JSON.parse(deepseek!.body.toString("utf8")).messages[0].content as string;
+        expect(prompt).toContain('EXPENSE categories: ["飲食"');
+        expect(prompt).not.toContain("INCOME categories");
+    });
+
+    it("suggest-category returns partial when the model finds no fit", async () => {
+        await mockServer(request =>
+            request.method === "POST" && request.path === "/chat/completions"
+                ? {status: 200, headers: {"content-type": "application/json"}, body: deepseekBody({category_name: null, confidence: 0.2})}
+                : {status: 404}
+        );
+
+        const fixture = await registerAndLogin(client);
+        const response = await client.post("/api/v1/ai/suggest-category").set(authHeader(fixture.token)).send({kind: "expense", note: "唔知咩"});
+
+        expect(response.status).toBe(200);
+        expect(response.body.data.status).toBe("partial");
+        expect(response.body.data.category_id).toBeNull();
+    });
+
+    it("suggest-category rejects invalid input and maps a DeepSeek failure to a 502", async () => {
+        await mockServer(request => (request.path === "/chat/completions" ? {status: 500} : {status: 404}));
+        const fixture = await registerAndLogin(client);
+        const headers = authHeader(fixture.token);
+
+        expect((await client.post("/api/v1/ai/suggest-category").set(headers).send({kind: "transfer", merchant_name: "x"})).status).toBe(422);
+        expect((await client.post("/api/v1/ai/suggest-category").set(headers).send({kind: "expense"})).status).toBe(422);
+        expect((await client.post("/api/v1/ai/suggest-category").set(headers).send({kind: "expense", note: "午餐"})).status).toBe(502);
+    });
 });

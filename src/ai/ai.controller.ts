@@ -16,13 +16,16 @@ import {Merchant} from "../database/entities/merchant.entity";
 import type {User} from "../database/entities/user.entity";
 import {IdempotencyService} from "../idempotency/idempotency.service";
 import {TransactionsService} from "../transactions/transactions.service";
-import {aiPayload, aiQueryPayload, transactionPayloadWithNet} from "../views/serializers";
+import {aiPayload, aiQueryPayload, categorySuggestionPayload, transactionPayloadWithNet} from "../views/serializers";
 import {DeepseekService, DeepSeekError, PROMPT_VERSION, STATUS_SUCCESS} from "./deepseek.service";
 
 /** 自然語言打字記帳嘅輸入上限（字元）。 */
 export const MAX_INTERPRET_TEXT = 500;
 /** 自然語言查詢嘅輸入上限（字元）。 */
 export const MAX_QUERY_TEXT = 500;
+/** 自動分類建議嘅商戶名／備註輸入上限（字元）。 */
+export const MAX_SUGGEST_MERCHANT = 200;
+export const MAX_SUGGEST_NOTE = 500;
 
 interface CategoryInfo {
     id: string;
@@ -412,6 +415,62 @@ export class AiController {
                 status: usable ? "success" : "partial",
                 filters: usable ? filters : null,
                 explanation: outcome.explanation,
+                error: outcome.error_message,
+                tokens_in: outcome.tokens_in,
+                tokens_out: outcome.tokens_out,
+                latency_ms: outcome.latency_ms,
+            }),
+        };
+    }
+
+    /**
+     * 自動分類建議：用戶喺交易表單打完商戶／備註後，若冇商戶預設分類就問
+     * DeepSeek 揀一個分類。純建議，唔寫 DB、唔開 `AiImportLog`；controller 再
+     * 將 model 回嘅名稱對當前用戶分類 resolve 做 id，對唔上就當冇建議。
+     */
+    @Post("suggest-category")
+    @HttpCode(200)
+    async suggestCategory(@CurrentUser() user: User, @Body() body: JsonObject): Promise<unknown> {
+        const kind = body.kind;
+        if (kind !== "income" && kind !== "expense") {
+            throw ApiError.parameterMissing("kind");
+        }
+
+        const merchantName = typeof body.merchant_name === "string" ? body.merchant_name.trim() : "";
+        const note = typeof body.note === "string" ? body.note.trim() : "";
+        if (merchantName === "" && note === "") {
+            throw new ApiError(422, "validation_error", "merchant_name or note is required");
+        }
+        if (merchantName.length > MAX_SUGGEST_MERCHANT) {
+            throw new ApiError(422, "validation_error", `merchant_name 不可超過 ${MAX_SUGGEST_MERCHANT} 字`);
+        }
+        if (note.length > MAX_SUGGEST_NOTE) {
+            throw new ApiError(422, "validation_error", `note 不可超過 ${MAX_SUGGEST_NOTE} 字`);
+        }
+
+        const categoryInfos = await this.loadCategoryInfos(user.id);
+
+        let outcome;
+        try {
+            outcome = await this.deepseek.callSuggestCategory(
+                {kind, merchantName: merchantName === "" ? null : merchantName, note: note === "" ? null : note},
+                categoryInfos.map(category => ({kind: category.kind, name: category.name}))
+            );
+        } catch (error) {
+            if (error instanceof DeepSeekError) {
+                throw ApiError.upstreamError(error.message);
+            }
+            throw error;
+        }
+
+        const matched = outcome.category_name === null ? null : matchCategory({category_hint: outcome.category_name, kind}, categoryInfos);
+
+        return {
+            data: categorySuggestionPayload({
+                status: matched === null ? "partial" : "success",
+                category_id: matched?.id ?? null,
+                category_name: matched?.name ?? null,
+                confidence: outcome.confidence,
                 error: outcome.error_message,
                 tokens_in: outcome.tokens_in,
                 tokens_out: outcome.tokens_out,

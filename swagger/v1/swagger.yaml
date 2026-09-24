@@ -335,6 +335,26 @@ paths:
         '200': { description: "AI query（status=success/partial；filters 為 URL 同名 list params：from／to／kind／account_id／category_id／merchant_id／q／min／max，冇可用條件時 status=partial、filters=null；explanation 為繁中覆述；唔寫入任何資料）" }
         '422': { description: text missing／blank／over 500 characters }
         '502': { description: DeepSeek is unavailable }
+  /api/v1/ai/suggest-category:
+    post:
+      tags: [Receipts and AI]
+      security: [{ bearerAuth: [] }]
+      summary: Suggest a category from a merchant name and/or note
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [kind]
+              properties:
+                kind: { type: string, enum: [income, expense] }
+                merchant_name: { type: string, nullable: true, maxLength: 200 }
+                note: { type: string, nullable: true, maxLength: 500 }
+      responses:
+        '200': { description: "Category suggestion（status=success/partial；category_id 為當前用戶分類 id，AI 揀唔到或對唔上時 null；純建議、唔寫入任何資料）" }
+        '422': { description: kind 無效／merchant_name 同 note 都空白／過長 }
+        '502': { description: DeepSeek is unavailable }
   /api/v1/ai/confirm:
     post:
       tags: [Receipts and AI]

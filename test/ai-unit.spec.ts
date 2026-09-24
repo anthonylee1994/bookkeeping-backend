@@ -31,7 +31,7 @@ describe("AiController (unit)", () => {
     let accounts: MockRepo;
     let categories: MockRepo;
     let merchants: MockRepo;
-    let deepseek: {call: ReturnType<typeof vi.fn>; callInterpret: ReturnType<typeof vi.fn>; callQuery: ReturnType<typeof vi.fn>};
+    let deepseek: {call: ReturnType<typeof vi.fn>; callInterpret: ReturnType<typeof vi.fn>; callQuery: ReturnType<typeof vi.fn>; callSuggestCategory: ReturnType<typeof vi.fn>};
     let transactions: {createValidated: ReturnType<typeof vi.fn>};
     let idempotency: {wrap: ReturnType<typeof vi.fn>};
     let controller: AiController;
@@ -41,7 +41,7 @@ describe("AiController (unit)", () => {
         accounts = mockRepo();
         categories = mockRepo();
         merchants = mockRepo();
-        deepseek = {call: vi.fn(), callInterpret: vi.fn(), callQuery: vi.fn()};
+        deepseek = {call: vi.fn(), callInterpret: vi.fn(), callQuery: vi.fn(), callSuggestCategory: vi.fn()};
         transactions = {createValidated: vi.fn()};
         idempotency = {wrap: vi.fn().mockImplementation(async (options: {run: () => Promise<unknown>}) => options.run())};
         accounts.find.mockResolvedValue([]);
@@ -241,6 +241,60 @@ describe("AiController (unit)", () => {
 
         deepseek.callQuery.mockRejectedValue(new DeepSeekError("upstream down"));
         await expect(controller.query(userFixture({id: USER}), {text: "午餐"})).rejects.toMatchObject({status: 502, code: "upstream_error"});
+    });
+
+    it("suggest-category resolves the returned name to the current user's category", async () => {
+        categories.find.mockResolvedValue([
+            {id: "c1", kind: 1, name: "飲食"},
+            {id: "c0", kind: 0, name: "薪水"},
+        ]);
+        deepseek.callSuggestCategory.mockResolvedValue({
+            category_name: "飲食",
+            confidence: 0.7,
+            raw_response: "{}",
+            error_message: null,
+            tokens_in: 10,
+            tokens_out: 5,
+            latency_ms: 20,
+            status: 1,
+        });
+
+        const result = (await controller.suggestCategory(userFixture({id: USER}), {kind: "expense", merchant_name: " 茶餐廳 ", note: "午餐"})) as {
+            data: Record<string, unknown>;
+        };
+
+        expect(deepseek.callSuggestCategory).toHaveBeenCalledWith({kind: "expense", merchantName: "茶餐廳", note: "午餐"}, [
+            {kind: 1, name: "飲食"},
+            {kind: 0, name: "薪水"},
+        ]);
+        expect(result.data).toMatchObject({status: "success", category_id: "c1", category_name: "飲食", confidence: 0.7});
+        expect(importLogs.save).not.toHaveBeenCalled();
+    });
+
+    it("suggest-category returns partial when the name matches nothing or is absent", async () => {
+        categories.find.mockResolvedValue([{id: "c1", kind: 1, name: "飲食"}]);
+        deepseek.callSuggestCategory.mockResolvedValue({
+            category_name: null,
+            confidence: 0.3,
+            raw_response: "{}",
+            error_message: null,
+            tokens_in: 1,
+            tokens_out: 1,
+            latency_ms: 5,
+            status: 3,
+        });
+
+        const result = (await controller.suggestCategory(userFixture({id: USER}), {kind: "expense", note: "唔知咩"})) as {data: Record<string, unknown>};
+
+        expect(result.data).toMatchObject({status: "partial", category_id: null, category_name: null});
+    });
+
+    it("suggest-category rejects a bad kind, empty input, and maps a DeepSeek failure to a 502", async () => {
+        await expect(controller.suggestCategory(userFixture({id: USER}), {kind: "transfer", merchant_name: "x"})).rejects.toMatchObject({status: 422, code: "validation_error"});
+        await expect(controller.suggestCategory(userFixture({id: USER}), {kind: "expense"})).rejects.toMatchObject({status: 422, code: "validation_error"});
+
+        deepseek.callSuggestCategory.mockRejectedValue(new DeepSeekError("upstream down"));
+        await expect(controller.suggestCategory(userFixture({id: USER}), {kind: "expense", note: "午餐"})).rejects.toMatchObject({status: 502, code: "upstream_error"});
     });
 
     it("confirm requires an import log id", async () => {

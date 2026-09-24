@@ -206,6 +206,32 @@ export function aiQueryPayload(input: AiQueryPayloadInput): Record<string, unkno
     };
 }
 
+export interface CategorySuggestionPayloadInput {
+    status: "success" | "partial";
+    /** 已 resolve 做當前用戶分類 id；對唔上任何分類時為 null。 */
+    category_id: string | null;
+    category_name: string | null;
+    confidence: number | null;
+    error: string | null;
+    tokens_in: number | null;
+    tokens_out: number | null;
+    latency_ms: number | null;
+}
+
+/** Payload for `POST /ai/suggest-category`. */
+export function categorySuggestionPayload(input: CategorySuggestionPayloadInput): Record<string, unknown> {
+    return {
+        status: input.status,
+        category_id: input.category_id,
+        category_name: input.category_name,
+        confidence: input.confidence,
+        error: input.error,
+        tokens_in: input.tokens_in,
+        tokens_out: input.tokens_out,
+        latency_ms: input.latency_ms,
+    };
+}
+
 export interface InsightPayloadInput {
     period: string;
     range: {from: string; to: string};

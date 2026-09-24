@@ -25,7 +25,7 @@ function ruleFor(method: string, path: string): Rule | null {
     if (patch && path === "/api/v1/me/password") {
         return {name: "auth/password", limit: 5, key: "user"};
     }
-    if (post && (path === "/api/v1/ai/parse" || path === "/api/v1/ai/interpret" || path === "/api/v1/ai/query" || path === "/api/v1/ai/confirm")) {
+    if (post && (path === "/api/v1/ai/parse" || path === "/api/v1/ai/interpret" || path === "/api/v1/ai/query" || path === "/api/v1/ai/suggest-category" || path === "/api/v1/ai/confirm")) {
         return {name: "ai", limit: 10, key: "user"};
     }
     if (post && path === "/api/v1/receipts/upload") {

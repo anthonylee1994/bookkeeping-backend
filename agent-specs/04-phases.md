@@ -604,3 +604,15 @@ dokku run bookkeeping-backend sh -c '
 - [x] 冇可用條件 → `status = partial`、`filters = null`；DeepSeek 失敗 → 502
 - [x] 唔寫 DB、唔開 `AiImportLog`；rate limit 同其他 AI endpoint 一樣 10/min/user
 - [x] `pnpm typecheck` 同 `pnpm format` 乾淨
+
+### Phase N5：AI 自動分類建議（2026-09-24）
+
+**目標**：`POST /ai/suggest-category` 由商戶名／備註建議一個分類，喺商戶冇預設分類時補位；純建議、唔入帳（見 `03-business-rules` #12、`02-api-endpoints` 3.7）。
+
+**驗收**
+
+- [x] `POST /ai/suggest-category`：`{ kind, merchant_name?, note? }` → `{ status, category_id, category_name, confidence, ... }`
+- [x] 只提供該 kind 嘅用戶分類名單；model 只可逐字 copy，後端再 resolve 成 id（不限大小寫、限同 kind）
+- [x] AI 揀唔到或對唔上 → `status = partial`、`category_id = null`；`kind` 無效或商戶／備註皆空白 → 422；DeepSeek 失敗 → 502
+- [x] 唔寫 DB、唔開 `AiImportLog`；rate limit 同其他 AI endpoint 一樣 10/min/user
+- [x] `pnpm typecheck`（310 tests）同 `pnpm format:check` 乾淨
